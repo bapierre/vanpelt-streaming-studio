@@ -92,23 +92,34 @@ Cloudflare Worker + Durable Objects + D1, TypeScript, in the same monorepo.
 ### 4.4 Connectors
 | Platform | Path | Spike output |
 |---|---|---|
-| Twitch | Hub-direct, EventSub WebSocket `channel.chat.message` | `docs/connectors/twitch.md` |
-| YouTube | Hub-direct, Data API v3 live chat (streaming endpoint if available, else polling) with quota math | `docs/connectors/youtube.md` |
+| Twitch | Hub-direct, EventSub WebSocket (`channel.chat.message`, `message_delete`, `clear`, `clear_user_messages`). Device Code Flow with a **Public** client: no secret; client id via `TWITCH_CLIENT_ID` | `docs/connectors/twitch.md` |
+| YouTube | Hub-direct. `liveChatMessages.streamList` (gRPC) with `liveChatMessages.list` polling as fallback; broadcast found via `liveBroadcasts.list` (`broadcastStatus=active`, `broadcastType=all`). Loopback OAuth + PKCE, scope `youtube.readonly`, **bring-your-own Google Cloud project** (see §4.6) | `docs/connectors/youtube.md`, `docs/connectors/youtube-stream_list.proto` |
 | Kick | Relay, official webhooks `chat.message.sent` | `docs/connectors/kick.md` |
 
 **Kick fallback:** an opt-in `kick-pusher` connector reads Kick's public web-client WebSocket. It is off by default and clearly labelled unofficial. It is used only if the relay is unavailable.
 
 **X chat (deferred):** chat needs X's Livestream API, which is approval-only and Enterprise-plan, with per-event webhook billing that is unpublished for chat (estimated $120–700/month per streamer if priced like similar events). Not built in v0. Findings are recorded in `docs/connectors/x.md`. Revisit as a self-hosted, "bring your own X app" relay platform, or on the shared relay if X confirms low pricing.
 
+### 4.6 Connections, credentials and secrets (amended 2026-10-01, M2)
+- **Secrets store:** `.streamhub/secrets.json` at the repo root (gitignored), mode `0600`, written atomically (temp file + rename). It holds platform tokens and BYO YouTube client credentials, and moves to the OS keychain with Tauri. Secrets are never published on the bus or logged.
+- **Connect flows are bus commands**, so they reuse the WebSocket origin checks: the dashboard publishes `connections.cmd.*`, and the hub answers with retained `connections.state` events. The only new HTTP route is the YouTube OAuth loopback callback `GET /oauth/youtube/callback`, protected by `state` + PKCE.
+- **Twitch:** Device Code Flow. The dashboard shows the code and a link to twitch.tv/activate. The hub refreshes on 401 (one-time refresh tokens, persisted atomically) and validates the token at startup and every hour.
+- **YouTube (option C):**
+  - **M2:** each streamer brings their own Google Cloud project and Desktop OAuth client (setup guide in `docs/setup/youtube.md`), and pastes the client id and secret into the Connections page.
+  - **Later:** a "connect with one click" token source through the relay, once your project passes Google verification and the YouTube compliance audit. The connector takes a `TokenSource` interface so the source can be swapped.
+- **YouTube policy obligations:** a YouTube icon on YouTube messages; links to the YouTube Terms of Service and Google Privacy Policy on the Connections page; chat kept in memory only (never persisted beyond 30 days); no derived chat metrics persisted.
+- **Deletions:** Twitch deletions and clears are honoured. YouTube no longer reports deletions (2026-06-23), so removal is best effort there.
+
 ### 4.5 Dashboard
 As in `ARCHITECTURE.md` §6, plus:
-- **Connections page:** connect/disconnect per platform (Twitch/YouTube OAuth locally; Kick through the relay), with status and last error.
+- **Connections page:** connect/disconnect per platform, with status and last error. Twitch and YouTube arrive in M2 (§4.6); Kick arrives with the relay in M3.
 - **Settings page:** enable/disable connectors and modules (§3).
 - **Chat:** three platform colours/icons and a filter for each.
 - Stream start/stop shows a reminder: *"multi-rtmp targets follow OBS only if Sync start is enabled."*
 
 ## 5. Event contract changes (`EVENTS.md` + `packages/shared`)
 - New `relay.connection` event: `{ connected: boolean; detail?: string }`.
+- M2: `chat.cleared` `{ platform: Platform; authorId?: string }` (whole chat, or one user's messages); `connections.state` `{ platform; state: 'disconnected'|'pending'|'connected'|'error'; account?: string; detail?: string; userCode?: string; verificationUri?: string; authUrl?: string; clientConfigured?: boolean }` (retained per platform); commands `connections.cmd.connect {platform}`, `connections.cmd.disconnect {platform}`, `connections.cmd.setYoutubeClient {clientId, clientSecret}`.
 - Hub ↔ relay protocol (in `packages/shared/relay.ts`):
   - relay → hub: `{ op: 'event', platform, receivedAt, payload }` and `{ op: 'status', platform, status, detail? }`
   - hub → relay: `{ op: 'ack', upTo }`, so replay only sends events after the last acknowledged one.
@@ -130,8 +141,8 @@ As in `ARCHITECTURE.md` §6, plus:
 ## 8. Revised milestones (replace `TASKS.md` M0–M4)
 - **M0 Skeleton** — workspace (`apps/hub`, `apps/dashboard`, `apps/relay`, `packages/shared`, `packages/overlay-sdk`, `modules/`), tooling, shared types, docs amended per this spec.
 - **M1 Bus + OBS + multistream** — bus/WS, overlay-sdk, OBS bridge, dashboard scenes/start/stop/status, multi-rtmp setup guide. *Done when:* one click goes live on all configured platforms (private test streams).
-- **M2 Direct chat** — Twitch and YouTube spikes and connectors, unified chat UI, Feature button. *Done when:* both feeds merge within ~2 s.
-- **M3 Relay + Kick** — relay worker, OAuth pairing, Kick webhooks, relay connector, Connections page, privacy/terms, deploy. *Done when:* Kick chat appears in the feed via your hosted relay, and a self-hosted relay works with only `RELAY_URL` changed.
+- **M2 Direct chat** — Twitch and YouTube connectors, secrets store, minimal Connections page (Twitch DCF, YouTube BYO client), unified chat UI, Feature button, setup guides. *Done when:* both feeds merge within ~2 s, and one platform failing doesn't affect the other.
+- **M3 Relay + Kick** — relay worker, OAuth pairing, Kick webhooks, relay connector, Kick on the Connections page, privacy/terms, deploy. *Done when:* Kick chat appears in the feed via your hosted relay, and a self-hosted relay works with only `RELAY_URL` changed.
 - **M4 Module host + settings** — module discovery, serving, permissions, Settings toggles. *Done when:* a hello-world module dropped into `modules/` loads as an OBS Browser Source and can be toggled off.
 
 After the base: Tauri shell (keychain, packaged app for non-developers), then live-coded modules.
