@@ -7,7 +7,7 @@ export interface ObsClient {
   connect(url: string, password?: string): Promise<unknown>;
   disconnect(): Promise<void>;
   call(requestType: string, requestData?: object): Promise<unknown>;
-  on(event: string, listener: (data: never) => void): unknown;
+  on<T>(event: string, listener: (data: T) => void): unknown;
 }
 
 export type Timer = { set(fn: () => void, ms: number): unknown; clear(handle: unknown): void };
