@@ -15,6 +15,8 @@ type Envelope<T extends string = string, P = unknown> = {
 ```
 
 ## Chat
+> X is a video destination only in v0; X chat is deferred (see docs/connectors/x.md).
+
 ```ts
 type Platform = 'twitch' | 'youtube' | 'kick';
 
@@ -48,6 +50,7 @@ type ChatMessage = {
 |---|---|
 | `chat.message` | `ChatMessage` |
 | `chat.deleted` | `{ id: string }` (normalized id) |
+| `relay.connection` | `{ connected: boolean; detail?: string }` |
 | `platform.status` | `{ platform: Platform; status: 'disconnected'\|'connecting'\|'live'\|'offline'\|'error'; detail?: string }` |
 
 ## OBS
@@ -65,23 +68,25 @@ type ChatMessage = {
 ## Show
 | type | payload |
 |---|---|
-| `show.transition.play` | `{ id: string; durationMs: number; midpointMs: number; toScene: string }` |
-| `show.transition.done` | `{ id: string }` |
-| `show.sequence.start` | `{ id: string }` |
-| `show.sequence.step` | `{ id: string; index: number }` |
-| `show.sequence.done` | `{ id: string; cancelled: boolean }` |
-| `show.sequence.cancel` | `{ id: string }` |
 | `show.feature.set` | `{ message: ChatMessage }` |
 | `show.feature.clear` | `{}` |
+
+Transition and sequence events (`show.transition.*`, `show.sequence.*`) return with their modules after the base; they are not in packages/shared yet.
 
 ## Module events
 Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`.
 
 ## WebSocket control ops (client → hub)
 ```jsonc
-{ "op": "subscribe",   "topics": ["chat.", "show."] }   // prefix match
+{ "op": "subscribe",   "topics": ["chat.", "obs.scene.changed", "*"] } // "x." = prefix, "x.y" = exact, "*" = all
 { "op": "unsubscribe", "topics": ["chat."] }
-{ "op": "publish",     "event": { "type": "...", "payload": { } } } // hub fills id/ts/source
-{ "op": "history",     "topic": "chat.message", "limit": 50 }
+{ "op": "publish",     "event": { "type": "...", "payload": { } } }       // hub fills id/ts/source
+{ "op": "history",     "reqId": "r1", "topic": "chat.message", "limit": 50 } // limit 1–200, default 50
 ```
-Hub → client: envelopes, plus `{ "op": "error", "code": string, "message": string }`.
+Hub → client: envelopes, plus
+- `{ "op": "error", "code": "bad_json"|"bad_op"|"bad_payload"|"forbidden", "message": string }`; the connection stays open.
+- `{ "op": "history-result", "reqId": string, "events": Envelope[] }`
+
+**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection` and `platform.status` (one per platform) that match the new topics, oldest first. A reloaded dashboard is correct at once.
+
+**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*` and `show.*`.
