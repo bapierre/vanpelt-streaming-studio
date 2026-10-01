@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http';
+import { connect as tcpConnect } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
@@ -154,5 +155,22 @@ describe('ops', () => {
     const closed = new Promise<number>((r) => c.ws.on('close', (code) => r(code)));
     c.send('x'.repeat(MAX_MESSAGE_BYTES + 1));
     expect(await closed).toBe(1009);
+  });
+});
+
+describe('robustness', () => {
+  it('survives a malformed upgrade path from any origin', async () => {
+    await new Promise<void>((resolve) => {
+      const sock = tcpConnect(port, '127.0.0.1', () =>
+        sock.write(
+          'GET // HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n' +
+            'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+            'Origin: https://evil.example\r\n\r\n',
+        ),
+      );
+      sock.on('close', () => resolve());
+      sock.on('error', () => resolve());
+    });
+    await expect(open(ORIGIN)).resolves.toBeDefined();
   });
 });

@@ -22,10 +22,14 @@ export function StatusBar({ state }: { state: DashboardState }) {
       <span title={state.obs.detail}>
         <Dot ok={state.obs.connected} /> OBS{!state.obs.connected && state.obs.detail ? `: ${state.obs.detail}` : ''}
       </span>
-      <span>
-        <Dot ok={stream.state === 'live'} /> {stream.state}
-        {stream.state === 'live' && stream.startedAt !== undefined && ` · ${formatUptime(now - stream.startedAt)}`}
-      </span>
+      {state.obs.connected ? (
+        <span>
+          <Dot ok={stream.state === 'live'} /> {stream.state}
+          {stream.state === 'live' && stream.startedAt !== undefined && ` · ${formatUptime(now - stream.startedAt)}`}
+        </span>
+      ) : (
+        <span className="muted">stream unknown</span>
+      )}
       {platforms.length === 0 ? (
         <span className="muted">No chat connectors yet</span>
       ) : (

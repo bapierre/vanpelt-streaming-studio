@@ -32,6 +32,14 @@ export async function createServer(opts: ServerOptions): Promise<FastifyInstance
     );
   }
 
-  attachWebSocket(app.server, { bus: opts.bus, allowedOrigins: allowedOrigins(opts.port, opts.dev) });
+  const wss = attachWebSocket(app.server, {
+    bus: opts.bus,
+    allowedOrigins: allowedOrigins(opts.port, opts.dev),
+  });
+  // Upgraded sockets keep the HTTP server open, so close them before Fastify waits on it.
+  app.addHook('preClose', async () => {
+    wss.clients.forEach((client) => client.terminate());
+    wss.close();
+  });
   return app;
 }

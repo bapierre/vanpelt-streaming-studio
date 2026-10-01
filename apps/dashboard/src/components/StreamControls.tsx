@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DashboardState } from '../state';
 
 type Props = {
@@ -7,10 +7,20 @@ type Props = {
   onStart: () => void;
   onStop: () => void;
   confirmMs?: number;
+  /** Confirming clicks faster than this are ignored, so a double-click never fires. */
+  minConfirmMs?: number;
 };
 
-export function StreamControls({ stream, disabled, onStart, onStop, confirmMs = 4000 }: Props) {
+export function StreamControls({
+  stream,
+  disabled,
+  onStart,
+  onStop,
+  confirmMs = 4000,
+  minConfirmMs = 500,
+}: Props) {
   const [armed, setArmed] = useState(false);
+  const armedAt = useRef(0);
 
   useEffect(() => {
     if (!armed) return;
@@ -19,6 +29,11 @@ export function StreamControls({ stream, disabled, onStart, onStop, confirmMs = 
   }, [armed, confirmMs]);
 
   const live = stream.state === 'live' || stream.state === 'starting';
+
+  // If the stream flips (e.g. started from OBS) while armed, the confirm would do the opposite.
+  useEffect(() => {
+    setArmed(false);
+  }, [live]);
   const changing = stream.state === 'starting' || stream.state === 'stopping';
   const label = armed
     ? live
@@ -29,7 +44,12 @@ export function StreamControls({ stream, disabled, onStart, onStop, confirmMs = 
       : 'Start stream';
 
   const onClick = () => {
-    if (!armed) return setArmed(true);
+    if (!armed) {
+      armedAt.current = Date.now();
+      setArmed(true);
+      return;
+    }
+    if (Date.now() - armedAt.current < minConfirmMs) return;
     setArmed(false);
     if (live) onStop();
     else onStart();

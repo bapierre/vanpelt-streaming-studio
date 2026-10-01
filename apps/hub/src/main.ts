@@ -34,7 +34,11 @@ try {
 }
 obs.start();
 
+let shuttingDown = false;
 const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  setTimeout(() => process.exit(1), 3000).unref();
   await obs.stop();
   await app.close();
   process.exit(0);

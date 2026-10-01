@@ -101,6 +101,20 @@ describe('connect', () => {
     expect(statuses).toEqual(['connecting', 'open', 'closed', 'connecting', 'open']);
   });
 
+  it('drops queued publishes older than the queue TTL', async () => {
+    client = connect({ url, WebSocketImpl: WS, reconnectBaseMs: 50, reconnectMaxMs: 50, queueTtlMs: 10 });
+    const statuses: string[] = [];
+    client.onStatus((s) => statuses.push(s));
+    client.on('obs.', () => {});
+    await until(() => received.length === 1);
+    sockets[0]!.close();
+    await until(() => statuses.includes('closed'));
+    client.publish('obs.cmd.stopStream');
+    await until(() => received.length === 2);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(received.map((m) => m.op)).toEqual(['subscribe', 'subscribe']);
+  });
+
   it('passes module identity in the URL', async () => {
     client = connect({ url, WebSocketImpl: WS, module: 'chat-overlay', token: 't0k' });
     await until(() => requestUrls.length === 1);

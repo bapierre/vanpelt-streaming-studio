@@ -11,6 +11,8 @@ export type ConnectOptions = {
   WebSocketImpl?: WebSocketCtor;
   reconnectBaseMs?: number;
   reconnectMaxMs?: number;
+  /** Publishes/history queued while disconnected are dropped after this long (default 5 s), so a stale command never fires late. */
+  queueTtlMs?: number;
 };
 
 export interface HubClient {
@@ -35,6 +37,7 @@ export function connect(opts: ConnectOptions = {}): HubClient {
   const Impl = opts.WebSocketImpl ?? globalThis.WebSocket;
   const baseMs = opts.reconnectBaseMs ?? 1000;
   const maxMs = opts.reconnectMaxMs ?? 30_000;
+  const queueTtlMs = opts.queueTtlMs ?? 5000;
   const url = new URL(opts.url ?? defaultUrl());
   if (opts.module) url.searchParams.set('module', opts.module);
   if (opts.token) url.searchParams.set('token', opts.token);
@@ -43,7 +46,7 @@ export function connect(opts: ConnectOptions = {}): HubClient {
   const statusHandlers = new Set<(s: HubStatus) => void>();
   const errorHandlers = new Set<(code: ErrorCode, message: string) => void>();
   const pending = new Map<string, { resolve: (e: Envelope[]) => void; reject: (err: Error) => void }>();
-  const outbox: string[] = [];
+  const outbox: Array<{ text: string; at: number }> = [];
 
   let ws: WebSocket | null = null;
   let status: HubStatus = 'connecting';
@@ -61,7 +64,7 @@ export function connect(opts: ConnectOptions = {}): HubClient {
   const send = (msg: object) => {
     const text = JSON.stringify(msg);
     if (ws?.readyState === OPEN) ws.send(text);
-    else if (outbox.length < MAX_OUTBOX) outbox.push(text);
+    else if (outbox.length < MAX_OUTBOX) outbox.push({ text, at: Date.now() });
   };
   const sendIfOpen = (msg: object) => {
     if (ws?.readyState === OPEN) ws.send(JSON.stringify(msg));
@@ -89,7 +92,8 @@ export function connect(opts: ConnectOptions = {}): HubClient {
       attempt = 0;
       setStatus('open');
       if (handlers.size) sock.send(JSON.stringify({ op: 'subscribe', topics: [...handlers.keys()] }));
-      for (const text of outbox.splice(0)) sock.send(text);
+      const now = Date.now();
+      for (const { text, at } of outbox.splice(0)) if (now - at <= queueTtlMs) sock.send(text);
     };
     sock.onmessage = (ev) => onMessage(JSON.parse(String(ev.data)) as ServerMessage);
     sock.onclose = () => {

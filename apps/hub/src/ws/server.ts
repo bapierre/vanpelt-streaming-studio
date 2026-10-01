@@ -22,7 +22,8 @@ export function isOriginAllowed(origin: string | undefined, allowed: string[]): 
 export function attachWebSocket(server: Server, opts: WsOptions): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
   server.on('upgrade', (req, socket, head) => {
-    const { pathname } = new URL(req.url ?? '/', 'http://127.0.0.1');
+    // Compare the raw path: parsing with URL throws on inputs like `//`, and this runs before the Origin check.
+    const pathname = (req.url ?? '/').split('?')[0];
     if (pathname !== '/ws') {
       socket.destroy();
       return;
