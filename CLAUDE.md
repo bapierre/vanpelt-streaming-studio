@@ -15,7 +15,7 @@ Read `ARCHITECTURE.md` for the design, `EVENTS.md` for the event contract, `TASK
 
 ## Hard rules
 - **Never encode or send video.** Everything video goes through OBS.
-- **Bind to 127.0.0.1 only.** No LAN or public exposure unless a task explicitly says so.
+- **Bind to 127.0.0.1 only.** The hub never accepts internet traffic. The relay (`apps/relay`) is the only internet-facing component.
 - **All platform data is normalized** into the types in `EVENTS.md` before it touches the bus. Nothing downstream may read `raw` except for debugging.
 - **Modules only talk to the hub through the event bus** (WebSocket). No module imports hub code.
 - **Secrets live in `.env` (v0)**, which is gitignored. Never log tokens. `.env.example` lists every key with an empty value.
@@ -27,20 +27,19 @@ Read `ARCHITECTURE.md` for the design, `EVENTS.md` for the event contract, `TASK
 - Hub: Fastify + `ws`, `obs-websocket-js` (v5 protocol), `zod` for validation.
 - Dashboard + overlays: React + Vite.
 - Tests: Vitest. Lint: ESLint + Prettier.
-- Desktop shell (Tauri 2) comes **after** the base works — see `TASKS.md` M5.
+- Desktop shell (Tauri 2) comes **after** the base is proven on a real stream.
 
 ## Repo layout
 ```
 apps/
   hub/          # Node process: bus, connectors, OBS bridge, HTTP/WS server
-  dashboard/    # React control panel (unified chat, scenes, sequences, status)
+  dashboard/    # React control panel (scenes, stream control, status; chat in M2)
+  relay/        # Cloudflare Worker for webhook-only platforms (Kick), M3
 packages/
   shared/       # event types + zod schemas (single source of truth)
-  overlay-sdk/  # tiny client lib modules use to connect to the bus
-modules/
-  chat-overlay/       # reference module: on-screen chat
-  featured-message/   # reference module: pinned chat message
-  transition-wipe/    # reference module: overlay-driven scene transition
+  overlay-sdk/  # client lib the dashboard and modules use to connect to the bus
+modules/        # optional overlay modules, built live on stream (host lands in M4)
+docs/           # multistream.md, go-live.md, connectors/, superpowers/specs|plans
 ```
 
 ## Conventions

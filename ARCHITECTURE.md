@@ -17,9 +17,8 @@ The hub is the only process that holds platform tokens and the OBS connection.
 ## Components
 
 ### 1. Event bus (`apps/hub/src/bus`)
-- In-process typed emitter + WebSocket fan-out at `ws://127.0.0.1:4455/ws`
-  (pick a port that does not clash with OBS's default 4455 — use **4747**; config key `HUB_PORT`).
-- Clients subscribe by topic prefix: `{"op":"subscribe","topics":["chat.","show."]}`.
+- In-process typed emitter + WebSocket fan-out at `ws://127.0.0.1:4747/ws` (config key `HUB_PORT`).
+- Clients subscribe by topic: "obs." is a prefix, "chat.message" is exact, "*" is everything. On subscribe the hub sends the latest retained state (see EVENTS.md).
 - Clients may publish only event types their manifest allows (see Modules).
 - Keeps a ring buffer of the last 200 `chat.message` events so a reloaded overlay/dashboard can backfill (`{"op":"history","topic":"chat.message","limit":50}`).
 
@@ -36,12 +35,12 @@ interface Connector {
 Each connector converts platform payloads to `ChatMessage` (see EVENTS.md) and emits `chat.message`, `chat.deleted`, `platform.status`.
 Reconnect with exponential backoff (1s → 60s cap, jitter).
 
-| Platform | Approach (verify first) | Notes |
+| Platform | Approach | Notes |
 |---|---|---|
-| Twitch | EventSub over WebSocket, `channel.chat.message` subscription, user token | IRC (e.g. tmi.js) is an acceptable fallback for v0. |
-| YouTube | Data API v3: find active broadcast → `liveChatId` → poll `liveChatMessages` respecting `pollingIntervalMillis` | **Quota is the constraint.** Check whether a streaming chat endpoint is currently available; prefer it over polling if so. |
-| Kick | Official public API if chat events are available without a public webhook URL; otherwise investigate the realtime websocket used by the web client | Webhooks need a public URL → would require a tunnel. Do a spike before committing. |
-| X | Out of scope for v0 (no practical live-chat API). | |
+| Twitch | EventSub over WebSocket, hub-direct | Spike first (M2). |
+| YouTube | Data API v3 live chat, hub-direct | Quota math in the spike (M2). |
+| Kick | Official webhooks via the **relay** (`apps/relay`, M3) | Opt-in unofficial Pusher fallback. |
+| X | Video only (RTMP via multi-rtmp). Chat deferred: Enterprise/approval-only API, see `docs/connectors/x.md`. | |
 
 #### Verify before building
 Platform APIs change. Before writing each connector, the agent must read the current official docs and confirm: auth flow + scopes, how to receive chat in real time, rate limits/quota, and ToS constraints. Record findings in `docs/connectors/<platform>.md`.
@@ -53,9 +52,11 @@ Platform APIs change. Before writing each connector, the agent must read the cur
   - `obs.cmd.startStream {}` / `obs.cmd.stopStream {}`
   - `obs.cmd.setSourceVisible { scene, source, visible }`
 - Re-emits OBS state: `obs.scene.changed`, `obs.stream.state`, `obs.connection`.
-- **Multistreaming is OBS's job** (multi-RTMP plugin or a relay service). The hub only starts/stops.
+- **Multistreaming is OBS's job**: obs-multi-rtmp with "Sync start/stop with OBS" on every target, so the hub's start/stop drives all destinations. The hub only sees the main output's state. Setup: docs/multistream.md.
 
 ### 4. Scene transitions
+> Not part of the base. Ships later as a module (see the spec).
+
 Two supported kinds, chosen per transition:
 1. **Native OBS transitions** (cut, fade, stinger video with alpha): hub just calls `setScene`; OBS applies its configured transition.
 2. **Overlay transitions** (animated web page, e.g. `modules/transition-wipe`): lives as a Browser Source on a *top-level "FX" scene nested in every show scene* (or as a global source). Flow:
@@ -69,6 +70,8 @@ Two supported kinds, chosen per transition:
    The hub drives timing from `midpointMs`; the overlay does not call OBS itself.
 
 ### 5. Sequencer (`apps/hub/src/sequencer`)
+> Not part of the base. Ships later as a module (see the spec).
+
 Named, scripted cue lists loaded from `config/sequences/*.json`, triggered from the dashboard (or a hotkey later).
 ```json
 {
@@ -114,13 +117,16 @@ A module is a static web bundle + manifest, served at `http://127.0.0.1:4747/m/<
 - The hub enforces `subscribes` / `publishes` per module (it identifies the module from the `module` query param + a per-session token the hub injects into the served HTML).
 - This contract is what gets vibecoded live: **one stream = one new module folder.**
 
+### 8. Relay (`apps/relay`, M3)
+A hosted, self-hostable Cloudflare Worker that receives Kick webhooks and does Kick OAuth, and forwards events to the hub over a WebSocket the hub opens outbound. It is the only internet-facing component. Design: docs/superpowers/specs/2026-10-01-streamhub-base-design.md §4.3.
+
 ## Config & secrets
 - `.env` (gitignored): `HUB_PORT`, `OBS_WS_URL`, `OBS_WS_PASSWORD`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_CHANNEL`, `YOUTUBE_API_KEY` / OAuth creds, `KICK_*`.
 - `config/` (committed, no secrets): sequences, platform colors, enabled connectors.
 - Later (Tauri shell): move tokens to the OS keychain and do OAuth in-app.
 
 ## Security
-- Listen on 127.0.0.1 only. Reject WS connections whose `Origin` is not the hub itself or OBS's browser source (OBS uses `null`/file origins — allow `null` only with a valid session token).
+- Listen on 127.0.0.1 only. Reject WebSocket connections whose Origin is not the hub itself (or the Vite dev server in development). OBS Browser Sources load overlays from the hub, so they send the hub's origin. Modules additionally need their session token (M4).
 - Treat all chat text as untrusted: render as text, never `innerHTML`.
 
 ## Out of scope for the base
