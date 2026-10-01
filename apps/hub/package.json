@@ -1,0 +1,29 @@
+{
+  "name": "@streamhub/hub",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "cross-env NODE_ENV=production tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.5",
+    "@streamhub/shared": "workspace:*",
+    "dotenv": "^18.0.4",
+    "fastify": "^5.12.5",
+    "obs-websocket-js": "^5.0.8",
+    "ulid": "^3.0.2",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/ws": "^8.18.2",
+    "cross-env": "^10.1.0",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.2"
+  }
+}
