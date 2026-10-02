@@ -7,6 +7,7 @@ const EnvSchema = z.object({
   OBS_WS_URL: z.preprocess(blankToUndefined, z.string().default('ws://127.0.0.1:4455')),
   OBS_WS_PASSWORD: z.preprocess(blankToUndefined, z.string().default('')),
   NODE_ENV: z.preprocess(blankToUndefined, z.string().default('development')),
+  TWITCH_CLIENT_ID: z.preprocess(blankToUndefined, z.string().trim().default('')),
 });
 
 export type HubConfig = {
@@ -15,6 +16,7 @@ export type HubConfig = {
   obsUrl: string;
   obsPassword: string;
   dev: boolean;
+  twitchClientId: string;
 };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): HubConfig {
@@ -25,5 +27,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     obsUrl: e.OBS_WS_URL,
     obsPassword: e.OBS_WS_PASSWORD,
     dev: e.NODE_ENV !== 'production',
+    twitchClientId: e.TWITCH_CLIENT_ID,
   };
 }

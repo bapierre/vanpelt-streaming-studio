@@ -1,6 +1,9 @@
 import type { Envelope, EventPayload, KnownEventType, StreamState } from '@streamhub/shared';
 import type { Bus } from '../bus/bus';
 import { backoffDelay } from '../util/backoff';
+import { realTimer, type Timer } from '../util/timer';
+import { describeError } from '../util/errors';
+export type { Timer } from '../util/timer';
 
 /** The subset of obs-websocket-js we use, so tests can fake it. */
 export interface ObsClient {
@@ -9,8 +12,6 @@ export interface ObsClient {
   call(requestType: string, requestData?: object): Promise<unknown>;
   on<T>(event: string, listener: (data: T) => void): unknown;
 }
-
-export type Timer = { set(fn: () => void, ms: number): unknown; clear(handle: unknown): void };
 
 export type ObsBridgeOptions = {
   bus: Bus;
@@ -32,13 +33,6 @@ const OUTPUT_STATES: Record<string, StreamState> = {
   OBS_WEBSOCKET_OUTPUT_STOPPING: 'stopping',
   OBS_WEBSOCKET_OUTPUT_STOPPED: 'stopped',
 };
-
-const realTimer: Timer = {
-  set: (fn, ms) => setTimeout(fn, ms),
-  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-};
-
-const describeError = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 export class ObsBridge {
   private connected = false;

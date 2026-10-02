@@ -9,6 +9,7 @@ describe('loadConfig', () => {
       obsUrl: 'ws://127.0.0.1:4455',
       obsPassword: '',
       dev: true,
+      twitchClientId: '',
     });
   });
   it('reads overrides', () => {
@@ -19,5 +20,9 @@ describe('loadConfig', () => {
   });
   it('rejects an invalid port', () => {
     expect(() => loadConfig({ HUB_PORT: '99999' })).toThrow();
+  });
+  it('reads the Twitch client id, empty by default', () => {
+    expect(loadConfig({}).twitchClientId).toBe('');
+    expect(loadConfig({ TWITCH_CLIENT_ID: ' abc123 ' }).twitchClientId).toBe('abc123');
   });
 });
