@@ -4,3 +4,4 @@ packages:
   - modules/*
 allowBuilds:
   esbuild: true
+  protobufjs: false
