@@ -1,6 +1,6 @@
 # Connect Twitch
 
-streamhub reads your chat with Twitch's EventSub and signs you in with a device code. No password or secret is stored in streamhub, and the token stays on this computer.
+streamhub reads your chat with Twitch's EventSub and signs you in with a device code. No password or client secret is stored. The Twitch tokens are stored only in `.streamhub/secrets.json` on this computer (an owner-only file).
 
 ## One-time: register a Twitch app (2 minutes)
 1. Go to https://dev.twitch.tv/console (2FA must be enabled on your Twitch account) → **Register Your Application**.
@@ -17,4 +17,4 @@ Each person or fork registers their own app; Twitch asks apps not to share clien
 ## Connect
 Dashboard → **Connections** → Twitch → **Connect**. Open the link, enter the code shown, and approve. The row turns **connected** with your login.
 
-streamhub re-checks the login every hour, as Twitch requires. If it expires or you revoke access, the row says so; press **Connect** again.
+streamhub re-checks the login every hour, as Twitch requires. If the login expires or you revoke access, the status bar shows `twitch: error`. Go to Connections, press **Disconnect**, then **Connect** again.

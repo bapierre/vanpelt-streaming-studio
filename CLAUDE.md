@@ -18,7 +18,7 @@ Read `ARCHITECTURE.md` for the design, `EVENTS.md` for the event contract, `TASK
 - **Bind to 127.0.0.1 only.** The hub never accepts internet traffic. The relay (`apps/relay`) is the only internet-facing component.
 - **All platform data is normalized** into the types in `EVENTS.md` before it touches the bus. Nothing downstream may read `raw` except for debugging.
 - **Modules only talk to the hub through the event bus** (WebSocket). No module imports hub code.
-- **Secrets live in `.env` (v0)**, which is gitignored. Never log tokens. `.env.example` lists every key with an empty value.
+- **Secrets** live in `.env` (config such as `OBS_WS_PASSWORD`, `TWITCH_CLIENT_ID`) and `.streamhub/secrets.json` (platform tokens, YouTube client secret; owner-only, written atomically). Both are gitignored. Never log secrets. `.env.example` lists every `.env` key with an empty value.
 - **Connectors must fail soft:** one platform going down never crashes the hub; it emits `platform.status` and retries with backoff.
 - Before implementing any platform connector, **check the platform's current official API docs** (see "Verify before building" in `ARCHITECTURE.md`). Do not rely on remembered endpoints.
 
