@@ -47,3 +47,20 @@ button.danger { background: var(--danger); font-weight: 600; }
 .mention { color: var(--accent); }
 .feature { margin-left: auto; padding: 2px 8px; font-size: 12px; }
 .jump { margin-top: 8px; align-self: center; }
+.tabs { display: flex; gap: 4px; margin-right: auto; margin-left: 16px; }
+.tabs button[aria-pressed='true'] { background: var(--accent); }
+main.single { grid-template-columns: minmax(0, 720px); }
+.conn { border-top: 1px solid #222632; padding: 12px 0; }
+.conn-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.conn-state { font-size: 12px; text-transform: uppercase; color: var(--muted); }
+.conn-state.connected { color: var(--ok); }
+.conn-state.error { color: var(--danger); }
+.conn-error { color: var(--danger); }
+.spacer { flex: 1; }
+.code { font-size: 20px; letter-spacing: 0.15em; padding: 2px 8px; background: #262a35; border-radius: 6px; }
+.yt-client { display: grid; gap: 8px; max-width: 480px; }
+.yt-client label { display: grid; gap: 4px; font-size: 13px; }
+.yt-client input { font: inherit; padding: 8px; border-radius: 6px; border: 1px solid #333; background: #11131a; color: var(--text); }
+button.link { background: none; padding: 0; color: var(--accent); text-decoration: underline; }
+.small { font-size: 12px; }
+a { color: var(--accent); }
