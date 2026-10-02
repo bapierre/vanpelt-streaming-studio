@@ -73,6 +73,43 @@ describe('ChatPanel', () => {
   });
 });
 
+describe('ChatPanel pausing', () => {
+  const msg = (id: string, platform: 'twitch' | 'youtube' = 'twitch') =>
+    chatMessage({ id, platform, text: id, fragments: [{ kind: 'text', text: id }] });
+  const ids = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => msg(`twitch:${from + i}`));
+  const props = { featuredId: null, onFeature: noop, onClearFeature: noop };
+
+  function scrollTo(list: Element, scrollTop: number) {
+    Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(list, 'clientHeight', { value: 400, configurable: true });
+    Object.defineProperty(list, 'scrollTop', { value: scrollTop, configurable: true, writable: true });
+    fireEvent.scroll(list);
+  }
+
+  it('keeps counting new messages when the list is at its cap', () => {
+    const { container, rerender } = render(<ChatPanel messages={ids(0, 300)} {...props} />);
+    scrollTo(container.querySelector('ol')!, 0);
+    rerender(<ChatPanel messages={ids(5, 305)} {...props} />);
+    expect(screen.getByRole('button', { name: /Jump to latest/ }).textContent).toContain('5 new');
+  });
+
+  it('does not count messages from hidden platforms', () => {
+    const { container, rerender } = render(<ChatPanel messages={[msg('twitch:1'), msg('youtube:1', 'youtube')]} {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Twitch' }));
+    scrollTo(container.querySelector('ol')!, 0);
+    rerender(<ChatPanel messages={[msg('twitch:1'), msg('youtube:1', 'youtube'), msg('twitch:2'), msg('twitch:3'), msg('youtube:2', 'youtube')]} {...props} />);
+    expect(screen.getByRole('button', { name: /Jump to latest/ }).textContent).toContain('1 new');
+  });
+
+  it('jump to latest re-pins and removes the button', () => {
+    const { container, rerender } = render(<ChatPanel messages={ids(0, 3)} {...props} />);
+    scrollTo(container.querySelector('ol')!, 0);
+    rerender(<ChatPanel messages={ids(0, 4)} {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /Jump to latest/ }));
+    expect(screen.queryByRole('button', { name: /Jump to latest/ })).toBeNull();
+  });
+});
+
 describe('isNearBottom', () => {
   it('is true within the threshold', () => {
     expect(isNearBottom({ scrollTop: 560, clientHeight: 400, scrollHeight: 1000 })).toBe(true);

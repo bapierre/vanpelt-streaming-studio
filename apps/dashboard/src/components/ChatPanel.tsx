@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, Platform } from '@streamhub/shared';
 import { PLATFORMS } from '../platforms';
 import { safeHttpsUrl } from '../safeUrl';
@@ -31,23 +31,24 @@ function Fragment({ f }: { f: ChatMessage['fragments'][number] }) {
 
 export function ChatPanel({ messages, featuredId, onFeature, onClearFeature }: Props) {
   const [hidden, setHidden] = useState<Set<Platform>>(new Set());
-  const [pinned, setPinned] = useState(true);
-  const [unseen, setUnseen] = useState(0);
+  // null while following the latest message; otherwise the id of the last
+  // visible message when the user scrolled away (undefined if there was none).
+  const [paused, setPaused] = useState<{ anchor: string | undefined } | null>(null);
   const list = useRef<HTMLOListElement>(null);
-  const lastCount = useRef(messages.length);
 
   const visible = messages.filter((m) => !hidden.has(m.platform));
+  const pinned = paused === null;
+  const anchorIndex = paused?.anchor === undefined ? -1 : visible.findIndex((m) => m.id === paused.anchor);
+  const unseen = paused ? visible.length - (anchorIndex + 1) : 0;
 
   useLayoutEffect(() => {
-    const added = Math.max(0, messages.length - lastCount.current);
-    lastCount.current = messages.length;
     if (pinned && list.current) list.current.scrollTop = list.current.scrollHeight;
-    else if (added) setUnseen((n) => n + added);
-  }, [messages, pinned]);
+  }, [visible.length, visible.at(-1)?.id, pinned]);
 
-  useEffect(() => {
-    if (pinned) setUnseen(0);
-  }, [pinned]);
+  const onScroll = (el: HTMLOListElement) => {
+    if (isNearBottom(el)) setPaused(null);
+    else setPaused((prev) => prev ?? { anchor: visible.at(-1)?.id });
+  };
 
   const toggle = (p: Platform) =>
     setHidden((prev) => {
@@ -76,7 +77,7 @@ export function ChatPanel({ messages, featuredId, onFeature, onClearFeature }: P
         </div>
       </div>
       {visible.length === 0 && <p className="muted">No messages yet. Connect a platform on the Connections page.</p>}
-      <ol className="chat-list" ref={list} onScroll={(e) => setPinned(isNearBottom(e.currentTarget))}>
+      <ol className="chat-list" ref={list} onScroll={(e) => onScroll(e.currentTarget)}>
         {visible.map((m) => (
           <li key={m.id} className={m.id === featuredId ? 'chat-row featured' : 'chat-row'}>
             <span className="tag" style={{ background: PLATFORMS[m.platform].color }}>
@@ -112,7 +113,7 @@ export function ChatPanel({ messages, featuredId, onFeature, onClearFeature }: P
           className="jump"
           onClick={() => {
             if (list.current) list.current.scrollTop = list.current.scrollHeight;
-            setPinned(true);
+            setPaused(null);
           }}
         >
           Paused · {unseen} new · Jump to latest
