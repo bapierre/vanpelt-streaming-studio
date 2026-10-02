@@ -67,4 +67,28 @@ describe('ConnectionsPanel', () => {
     render(<ConnectionsPanel connections={{ kick: { platform: 'kick', state: 'disconnected', detail: 'Kick arrives with the relay (M3).' } }} {...handlers()} />);
     expect(within(screen.getByTestId('conn-kick')).getByRole('button', { name: 'Connect' })).toHaveProperty('disabled', true);
   });
+
+  it('lets a pending connection be started again', () => {
+    const h = handlers();
+    render(
+      <ConnectionsPanel
+        connections={{
+          twitch: { platform: 'twitch', state: 'pending', userCode: 'ABCDEFGH' },
+          youtube: { platform: 'youtube', state: 'pending', clientConfigured: true },
+        }}
+        {...h}
+      />,
+    );
+    for (const platform of ['twitch', 'youtube'] as const) {
+      const button = within(screen.getByTestId(`conn-${platform}`)).getByRole('button', { name: 'Start again' });
+      expect(button).toHaveProperty('disabled', false);
+      fireEvent.click(button);
+      expect(h.onConnect).toHaveBeenCalledWith(platform);
+    }
+  });
+
+  it('keeps the client secret out of browser password saving', () => {
+    render(<ConnectionsPanel connections={{ youtube: { platform: 'youtube', state: 'disconnected', clientConfigured: false } }} {...handlers()} />);
+    expect(screen.getByLabelText('Client secret').getAttribute('autocomplete')).toBe('new-password');
+  });
 });

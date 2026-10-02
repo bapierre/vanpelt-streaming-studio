@@ -37,8 +37,8 @@ function Row({ platform, state, children, onConnect, onDisconnect, disabled }: {
         {s === 'connected' ? (
           <button onClick={onDisconnect}>Disconnect</button>
         ) : (
-          <button className="primary" onClick={onConnect} disabled={disabled || s === 'pending'}>
-            Connect
+          <button className="primary" onClick={onConnect} disabled={disabled}>
+            {s === 'pending' ? 'Start again' : 'Connect'}
           </button>
         )}
       </div>
@@ -69,7 +69,7 @@ function YouTubeClientForm({ onSave }: { onSave: (id: string, secret: string) =>
       </label>
       <label>
         Client secret
-        <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
+        <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="new-password" />
       </label>
       <button type="submit">Save client</button>
     </form>
