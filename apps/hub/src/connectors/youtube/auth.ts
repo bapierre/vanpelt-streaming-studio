@@ -29,6 +29,8 @@ type TokenResponse = { access_token: string; expires_in: number; refresh_token?:
 export class YouTubeAuth implements TokenSource {
   private pending: { state: string; verifier: string; expiresAt: number } | null = null;
   private stale = false;
+  /** Bumped on disconnect or client change; token writes from earlier operations are refused. */
+  private generation = 0;
   private refreshing: Promise<string> | null = null;
   private readonly fetchFn: typeof fetch;
   private readonly now: () => number;
@@ -54,6 +56,8 @@ export class YouTubeAuth implements TokenSource {
 
   /** Saving a new client drops any tokens issued to the previous one. */
   async setClient(clientId: string, clientSecret: string): Promise<void> {
+    this.generation++;
+    this.pending = null;
     await this.opts.store.update((s) => ({
       ...s,
       youtube: { clientId: clientId.trim(), clientSecret: clientSecret.trim() },
@@ -95,6 +99,7 @@ export class YouTubeAuth implements TokenSource {
       throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from the Connections page.');
     }
     this.pending = null;
+    const generation = this.generation;
     const yt = this.opts.store.get().youtube;
     if (!yt) throw new YouTubeAuthError('Add your Google OAuth client first (see docs/setup/youtube.md).');
     const body = await this.token({
@@ -110,21 +115,30 @@ export class YouTubeAuth implements TokenSource {
         'Google did not return a refresh token. Remove streamhub at myaccount.google.com/permissions and connect again.',
       );
     }
+    // Only write if the user has not disconnected, removed or replaced the client while the exchange was in flight.
+    let written = false;
+    await this.opts.store.update((s) => {
+      if (
+        generation !== this.generation ||
+        !s.youtube ||
+        s.youtube.clientId !== yt.clientId ||
+        s.youtube.clientSecret !== yt.clientSecret
+      ) {
+        return s;
+      }
+      written = true;
+      return {
+        ...s,
+        youtube: {
+          ...s.youtube,
+          accessToken: body.access_token,
+          refreshToken: body.refresh_token,
+          expiresAt: this.now() + body.expires_in * 1000,
+        },
+      };
+    });
+    if (!written) throw new YouTubeAuthError('YouTube was disconnected during sign-in. Connect again.');
     this.stale = false;
-    // Only write if the user has not removed or replaced the client while the exchange was in flight.
-    await this.opts.store.update((s) =>
-      s.youtube && s.youtube.clientId === yt.clientId && s.youtube.clientSecret === yt.clientSecret
-        ? {
-            ...s,
-            youtube: {
-              ...s.youtube,
-              accessToken: body.access_token,
-              refreshToken: body.refresh_token,
-              expiresAt: this.now() + body.expires_in * 1000,
-            },
-          }
-        : s,
-    );
   }
 
   async accessToken(): Promise<string> {
@@ -144,6 +158,8 @@ export class YouTubeAuth implements TokenSource {
   }
 
   async clearTokens(): Promise<void> {
+    this.generation++;
+    this.pending = null;
     await this.opts.store.update((s) =>
       s.youtube ? { ...s, youtube: { clientId: s.youtube.clientId, clientSecret: s.youtube.clientSecret } } : s,
     );
@@ -152,6 +168,7 @@ export class YouTubeAuth implements TokenSource {
   private async refresh(): Promise<string> {
     const yt = this.opts.store.get().youtube;
     if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it on the Connections page.');
+    const generation = this.generation;
     let body: TokenResponse;
     try {
       body = await this.token({
@@ -163,7 +180,7 @@ export class YouTubeAuth implements TokenSource {
     } catch (err) {
       if (err instanceof YouTubeAuthError && err.message.includes('invalid_grant')) {
         await this.opts.store.update((s) =>
-          s.youtube && s.youtube.refreshToken === yt.refreshToken
+          generation === this.generation && s.youtube && s.youtube.refreshToken === yt.refreshToken
             ? { ...s, youtube: { clientId: s.youtube.clientId, clientSecret: s.youtube.clientSecret } }
             : s,
         );
@@ -171,13 +188,25 @@ export class YouTubeAuth implements TokenSource {
       }
       throw err;
     }
-    this.stale = false;
     // Skip the write if the user disconnected or changed the sign-in while the refresh was in flight.
-    await this.opts.store.update((s) =>
-      s.youtube && s.youtube.clientId === yt.clientId && s.youtube.refreshToken === yt.refreshToken
-        ? { ...s, youtube: { ...s.youtube, accessToken: body.access_token, expiresAt: this.now() + body.expires_in * 1000 } }
-        : s,
-    );
+    let written = false;
+    await this.opts.store.update((s) => {
+      if (
+        generation !== this.generation ||
+        !s.youtube ||
+        s.youtube.clientId !== yt.clientId ||
+        s.youtube.refreshToken !== yt.refreshToken
+      ) {
+        return s;
+      }
+      written = true;
+      return {
+        ...s,
+        youtube: { ...s.youtube, accessToken: body.access_token, expiresAt: this.now() + body.expires_in * 1000 },
+      };
+    });
+    if (!written) throw new YouTubeAuthError('YouTube was disconnected.');
+    this.stale = false;
     return body.access_token;
   }
 

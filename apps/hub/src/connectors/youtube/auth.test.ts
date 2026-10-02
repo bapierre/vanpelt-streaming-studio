@@ -124,7 +124,7 @@ describe('YouTubeAuth', () => {
     const done = auth.completeAuth({ code: 'c', state });
     await store.update((s) => ({ ...s, youtube: undefined }));
     release();
-    await done;
+    await expect(done).rejects.toThrow('disconnected during sign-in');
     expect(store.get().youtube).toBeUndefined();
   });
 
@@ -141,7 +141,7 @@ describe('YouTubeAuth', () => {
     const done = auth.completeAuth({ code: 'c', state });
     await auth.setClient('other', 'secret2');
     release();
-    await done;
+    await expect(done).rejects.toThrow('disconnected during sign-in');
     expect(store.get().youtube).toEqual({ clientId: 'other', clientSecret: 'secret2' });
   });
 
@@ -158,7 +158,7 @@ describe('YouTubeAuth', () => {
     await vi.waitFor(() => expect(fetchFn.calls).toHaveLength(1));
     await auth.clearTokens();
     release();
-    await pending;
+    await expect(pending).rejects.toThrow('YouTube was disconnected.');
     expect(store.get().youtube).toEqual({ clientId: 'cid', clientSecret: 's' });
   });
 
@@ -167,5 +167,41 @@ describe('YouTubeAuth', () => {
     await store.update((s) => ({ ...s, youtube: { clientId: 'cid', clientSecret: 'SECRETVAL', refreshToken: 'RTVAL' } }));
     const err = await auth.accessToken().catch((e: Error) => e);
     expect((err as Error).message).not.toMatch(/LEAK|SECRETVAL|RTVAL/);
+  });
+
+  it('does not store tokens when disconnected (clearTokens) during the code exchange', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const auth = make(
+      fakeFetch(async () => {
+        await gate;
+        return json(200, { access_token: 'at', refresh_token: 'rt', expires_in: 3600 });
+      }),
+    );
+    await auth.setClient('cid', 'secret');
+    const state = new URL(auth.beginAuth()).searchParams.get('state')!;
+    const done = auth.completeAuth({ code: 'c', state });
+    await vi.waitFor(() => expect(store.get().youtube).toBeDefined());
+    await auth.clearTokens();
+    release();
+    await expect(done).rejects.toThrow('disconnected');
+    expect(store.get().youtube).toEqual({ clientId: 'cid', clientSecret: 'secret' });
+    expect(auth.connected()).toBe(false);
+  });
+
+  it('rejects a sign-in started before a disconnect', async () => {
+    const auth = make();
+    await auth.setClient('cid', 'secret');
+    const state = new URL(auth.beginAuth()).searchParams.get('state')!;
+    await auth.clearTokens();
+    await expect(auth.completeAuth({ code: 'c', state })).rejects.toThrow('invalid or expired');
+  });
+
+  it('rejects a sign-in started before the client was replaced', async () => {
+    const auth = make();
+    await auth.setClient('cid', 'secret');
+    const state = new URL(auth.beginAuth()).searchParams.get('state')!;
+    await auth.setClient('cid', 'secret');
+    await expect(auth.completeAuth({ code: 'c', state })).rejects.toThrow('invalid or expired');
   });
 });
