@@ -1,4 +1,5 @@
 import type { HubClient } from '@streamhub/overlay-sdk';
+import { ChatPanel } from './components/ChatPanel';
 import { ScenePanel } from './components/ScenePanel';
 import { StatusBar } from './components/StatusBar';
 import { StreamControls } from './components/StreamControls';
@@ -25,10 +26,12 @@ export function App({ client }: { client: HubClient }) {
           disabled={!obsReady}
           onSelect={(scene) => client.publish('obs.cmd.setScene', { scene })}
         />
-        <section className="panel">
-          <h2>Chat</h2>
-          <p className="muted">Unified chat arrives in M2.</p>
-        </section>
+        <ChatPanel
+          messages={state.chat}
+          featuredId={state.featuredId}
+          onFeature={(message) => client.publish('show.feature.set', { message })}
+          onClearFeature={() => client.publish('show.feature.clear')}
+        />
       </main>
       <StatusBar state={state} />
     </div>

@@ -31,3 +31,19 @@ button.danger { background: var(--danger); font-weight: 600; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
 .dot.ok { background: var(--ok); }
 .dot.bad { background: var(--danger); }
+.chat { display: flex; flex-direction: column; min-height: 0; max-height: calc(100vh - 140px); }
+.chat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filters { display: flex; gap: 6px; }
+.filter { padding: 4px 10px; font-size: 12px; border: 1px solid; background: transparent; }
+.filter.off { opacity: 0.4; }
+.chat-list { list-style: none; margin: 8px 0 0; padding: 0; overflow-y: auto; flex: 1; }
+.chat-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 6px 4px; border-bottom: 1px solid #222632; overflow-wrap: anywhere; }
+.chat-row.featured { background: #2b2550; }
+.tag { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; color: #fff; }
+.author { font-weight: 600; }
+.role { font-size: 10px; text-transform: uppercase; color: var(--muted); border: 1px solid #333; border-radius: 4px; padding: 0 4px; }
+.text { flex-basis: 100%; }
+.emote { height: 1.6em; vertical-align: middle; }
+.mention { color: var(--accent); }
+.feature { margin-left: auto; padding: 2px 8px; font-size: 12px; }
+.jump { margin-top: 8px; align-self: center; }

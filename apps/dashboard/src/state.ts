@@ -1,10 +1,14 @@
 import type {
+  ChatMessage,
+  ConnectionState,
   ConnectorStatus,
   Envelope,
   EventPayload,
   Platform,
   StreamState,
 } from '@streamhub/shared';
+
+export const CHAT_LIMIT = 300;
 
 export type DashboardState = {
   hubConnected: boolean;
@@ -13,9 +17,15 @@ export type DashboardState = {
   currentScene: string | null;
   stream: { state: StreamState; startedAt?: number };
   platforms: Partial<Record<Platform, { status: ConnectorStatus; detail?: string }>>;
+  chat: ChatMessage[];
+  featuredId: string | null;
+  connections: Partial<Record<Platform, ConnectionState>>;
 };
 
-export type Action = { kind: 'hub'; connected: boolean } | { kind: 'event'; event: Envelope };
+export type Action =
+  | { kind: 'hub'; connected: boolean }
+  | { kind: 'event'; event: Envelope }
+  | { kind: 'backfill'; events: Envelope[] };
 
 export const initialState: DashboardState = {
   hubConnected: false,
@@ -24,12 +34,24 @@ export const initialState: DashboardState = {
   currentScene: null,
   stream: { state: 'stopped' },
   platforms: {},
+  chat: [],
+  featuredId: null,
+  connections: {},
 };
 
 export function reduce(state: DashboardState, action: Action): DashboardState {
   if (action.kind === 'hub') {
     // On reconnect the hub resends retained state, so start clean.
     return action.connected ? { ...state, hubConnected: true } : initialState;
+  }
+  if (action.kind === 'backfill') {
+    const known = new Set(state.chat.map((m) => m.id));
+    const older = action.events
+      .filter((e) => e.type === 'chat.message')
+      .map((e) => e.payload as ChatMessage)
+      .filter((m) => !known.has(m.id));
+    const chat = [...older, ...state.chat].sort((a, b) => a.sentAt - b.sentAt).slice(-CHAT_LIMIT);
+    return { ...state, chat };
   }
   const { type, payload } = action.event;
   switch (type) {
@@ -49,6 +71,30 @@ export function reduce(state: DashboardState, action: Action): DashboardState {
         ...state,
         platforms: { ...state.platforms, [p.platform]: { status: p.status, detail: p.detail } },
       };
+    }
+    case 'chat.message': {
+      const m = payload as ChatMessage;
+      if (state.chat.some((c) => c.id === m.id)) return state;
+      return { ...state, chat: [...state.chat, m].slice(-CHAT_LIMIT) };
+    }
+    case 'chat.deleted': {
+      const { id } = payload as EventPayload<'chat.deleted'>;
+      return { ...state, chat: state.chat.filter((m) => m.id !== id) };
+    }
+    case 'chat.cleared': {
+      const p = payload as EventPayload<'chat.cleared'>;
+      return {
+        ...state,
+        chat: state.chat.filter((m) => m.platform !== p.platform || (p.authorId !== undefined && m.author.id !== p.authorId)),
+      };
+    }
+    case 'show.feature.set':
+      return { ...state, featuredId: (payload as EventPayload<'show.feature.set'>).message.id };
+    case 'show.feature.clear':
+      return { ...state, featuredId: null };
+    case 'connections.state': {
+      const p = payload as ConnectionState;
+      return { ...state, connections: { ...state.connections, [p.platform]: p } };
     }
     default:
       return state;
