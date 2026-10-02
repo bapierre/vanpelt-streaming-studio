@@ -68,6 +68,37 @@ describe('ConnectionsService', () => {
     expect(states('twitch')[0]).toMatchObject({ state: 'disconnected', detail: expect.stringContaining('TWITCH_CLIENT_ID') });
   });
 
+  it('reports lost Twitch auth as an error and can connect again from it', async () => {
+    twitch.tokens.mockReturnValue({ login: 'yatf' });
+    service.start();
+    service.authLost('twitch', 'Twitch login expired. Reconnect Twitch on the Connections page.');
+    expect(states('twitch').at(-1)).toEqual({
+      platform: 'twitch',
+      state: 'error',
+      detail: 'Twitch login expired. Reconnect Twitch on the Connections page.',
+    });
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    expect(twitch.startDeviceFlow).toHaveBeenCalled();
+    expect(states('twitch').at(-1)).toEqual({ platform: 'twitch', state: 'connected', account: 'yatf' });
+    expect(restart).toHaveBeenCalledWith('twitch');
+  });
+
+  it('reports lost YouTube auth as an error with the client still configured, and can connect again', async () => {
+    youtube.clientConfigured!.mockReturnValue(true);
+    service.start();
+    service.authLost('youtube', 'YouTube sign-in expired. Reconnect YouTube on the Connections page.');
+    expect(states('youtube').at(-1)).toEqual({
+      platform: 'youtube',
+      state: 'error',
+      clientConfigured: true,
+      detail: 'YouTube sign-in expired. Reconnect YouTube on the Connections page.',
+    });
+    cmd('connections.cmd.connect', { platform: 'youtube' });
+    await settle();
+    expect(states('youtube').at(-1)).toMatchObject({ state: 'pending', authUrl: expect.stringContaining('accounts.google.com') });
+  });
+
   it('runs the Twitch device flow and restarts the connector', async () => {
     service.start();
     cmd('connections.cmd.connect', { platform: 'twitch' });

@@ -27,12 +27,25 @@ const twitchAuth = cfg.twitchClientId ? new TwitchAuth({ clientId: cfg.twitchCli
 const youtubeAuth = new YouTubeAuth({ store, redirectUri: `http://127.0.0.1:${cfg.port}/oauth/youtube/callback` });
 const youtubeApi = createYouTubeApi();
 
+// Connectors are built before the service that owns connections.state, so their auth-loss callbacks bind late.
+const late: { connections?: ConnectionsService } = {};
 const connectors: Connector[] = [
-  new YouTubeConnector({ bus, tokens: youtubeAuth, api: youtubeApi, channel: () => youtubeAuth.account() ?? 'YouTube' }),
+  new YouTubeConnector({
+    bus,
+    tokens: youtubeAuth,
+    api: youtubeApi,
+    channel: () => youtubeAuth.account() ?? 'YouTube',
+    onAuthLost: (detail) => late.connections?.authLost('youtube', detail),
+  }),
 ];
 if (twitchAuth) {
   connectors.push(
-    new TwitchConnector({ bus, auth: twitchAuth, createSocket: (url) => new WebSocket(url) as unknown as SocketLike }),
+    new TwitchConnector({
+      bus,
+      auth: twitchAuth,
+      createSocket: (url) => new WebSocket(url) as unknown as SocketLike,
+      onAuthLost: (detail) => late.connections?.authLost('twitch', detail),
+    }),
   );
 }
 const manager = new ConnectorManager(connectors);
@@ -44,6 +57,7 @@ const connections = new ConnectionsService({
   restart: (p) => manager.restart(p),
   halt: (p) => manager.halt(p),
 });
+late.connections = connections;
 
 const app = await createServer({
   bus,

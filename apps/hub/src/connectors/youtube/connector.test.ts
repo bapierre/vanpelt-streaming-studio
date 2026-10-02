@@ -24,6 +24,7 @@ let tokens: {
   connected: () => boolean;
 };
 let connector: YouTubeConnector;
+let onAuthLost: ReturnType<typeof vi.fn<(detail: string) => void>>;
 
 let clock = T0;
 
@@ -51,6 +52,7 @@ beforeEach(() => {
     ),
   };
   tokens = { accessToken: vi.fn(async () => 'tok'), invalidate: vi.fn(), connected: () => true };
+  onAuthLost = vi.fn();
   connector = new YouTubeConnector({
     bus,
     tokens: tokens as unknown as TokenSource & { connected(): boolean },
@@ -59,6 +61,7 @@ beforeEach(() => {
     timer,
     rand: () => 1,
     now: () => clock,
+    onAuthLost,
   });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -171,6 +174,20 @@ describe('YouTubeConnector', () => {
       detail: expect.stringContaining('Reconnect YouTube'),
     });
     expect(timer.queue).toEqual([]);
+    expect(onAuthLost).toHaveBeenCalledWith(
+      'YouTube sign-in expired. Reconnect YouTube on the Connections page.',
+    );
+  });
+
+  it('does not let a throwing onAuthLost escape', async () => {
+    onAuthLost.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    tokens.accessToken.mockRejectedValue(new YouTubeAuthError('YouTube sign-in expired.'));
+    connector.start();
+    await settle();
+    expect(lastStatus()).toMatchObject({ status: 'error' });
+    expect(timer.queue).toEqual([]);
   });
 
   it('backs off and retries when the token service is temporarily unavailable', async () => {
@@ -186,6 +203,7 @@ describe('YouTubeConnector', () => {
     await settle();
     expect(api.findActiveChat).toHaveBeenCalledTimes(1);
     expect(streams).toHaveLength(1);
+    expect(onAuthLost).not.toHaveBeenCalled();
   });
 
   it('publishes best-effort deletions and ban clears', async () => {

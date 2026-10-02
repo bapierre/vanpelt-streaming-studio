@@ -41,6 +41,8 @@ export type TwitchConnectorOptions = {
   timer?: Timer;
   rand?: () => number;
   url?: string;
+  /** Called when the connector stops because the user must reconnect Twitch. */
+  onAuthLost?: (detail: string) => void;
 };
 
 /** EventSub WebSocket lifecycle. See docs/connectors/twitch.md §3. */
@@ -90,9 +92,15 @@ export class TwitchConnector implements Connector {
     sockets.forEach((s) => s?.close(1000));
   }
 
-  private halt(detail: string) {
+  /** Stops for good: the user must reconnect Twitch. */
+  private authLost(detail: string) {
     this.shutdown();
     this.status('error', detail);
+    try {
+      this.opts.onAuthLost?.(detail);
+    } catch (err) {
+      console.warn('[twitch] onAuthLost failed:', describeError(err));
+    }
   }
 
   private open(url: string, isHandover: boolean) {
@@ -224,7 +232,7 @@ export class TwitchConnector implements Connector {
   private onRevocation(frame: Frame) {
     const sub = frame.payload?.subscription;
     if (sub?.status === 'authorization_revoked' || sub?.status === 'user_removed') {
-      this.halt(`Twitch access was revoked. ${RECONNECT_HINT}`);
+      this.authLost(`Twitch access was revoked. ${RECONNECT_HINT}`);
       return;
     }
     console.warn(`[twitch] subscription ${sub?.type} revoked: ${sub?.status}`);
@@ -287,7 +295,7 @@ export class TwitchConnector implements Connector {
     const ok = await this.opts.auth.validate().catch(() => false);
     if (this.stopped || generation !== this.generation) return;
     if (!ok) {
-      this.halt(`Twitch login expired. ${RECONNECT_HINT}`);
+      this.authLost(`Twitch login expired. ${RECONNECT_HINT}`);
       return;
     }
     this.validation = this.timer.set(() => {

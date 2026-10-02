@@ -25,6 +25,8 @@ export type YouTubeConnectorOptions = {
   now?: () => number;
   offlineCheckMs?: number;
   streamFailuresBeforePolling?: number;
+  /** Called when the connector stops because the user must reconnect YouTube. */
+  onAuthLost?: (detail: string) => void;
 };
 
 type ActiveChat = {
@@ -258,6 +260,7 @@ export class YouTubeConnector implements Connector {
     if (err instanceof YouTubeAuthError) {
       this.shutdown();
       this.status('error', err.message);
+      this.guard('onAuthLost failed:', () => this.opts.onAuthLost?.(err.message));
       return;
     }
     if (err instanceof YouTubeApiError) {

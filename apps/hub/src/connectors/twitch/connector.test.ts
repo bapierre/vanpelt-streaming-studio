@@ -35,6 +35,7 @@ let sockets: FakeSocket[];
 let events: Envelope[];
 let helix: ReturnType<typeof vi.fn>;
 let validate: ReturnType<typeof vi.fn>;
+let onAuthLost: ReturnType<typeof vi.fn<(detail: string) => void>>;
 let tokens: { accessToken: string; refreshToken: string; userId: string; login: string } | undefined;
 let connector: TwitchConnector;
 
@@ -46,6 +47,7 @@ beforeEach(() => {
   tokens = { accessToken: 'a', refreshToken: 'r', userId: '1971641', login: 'streamer' };
   helix = vi.fn(async () => new Response(null, { status: 202 }));
   validate = vi.fn(async () => true);
+  onAuthLost = vi.fn();
   bus.subscribe(['chat.', 'platform.status'], (e) => events.push(e));
   connector = new TwitchConnector({
     bus,
@@ -57,6 +59,7 @@ beforeEach(() => {
     },
     timer,
     rand: () => 1,
+    onAuthLost,
   });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -137,6 +140,7 @@ describe('TwitchConnector', () => {
     sockets[0]!.frame(welcome());
     await settle();
     expect(lastStatus()).toMatchObject({ status: 'error', detail: expect.stringContaining('403') });
+    expect(onAuthLost).not.toHaveBeenCalled();
     expect(sockets[0]!.closed).toBe(true);
     timer.fire(1000);
     expect(sockets).toHaveLength(2);
@@ -195,6 +199,7 @@ describe('TwitchConnector', () => {
       payload: { subscription: { type: 'channel.chat.message', status: 'authorization_revoked' } },
     });
     expect(lastStatus()).toMatchObject({ status: 'error', detail: expect.stringContaining('Connections') });
+    expect(onAuthLost).toHaveBeenCalledWith(expect.stringContaining('Twitch access was revoked'));
     expect(sockets[0]!.closed).toBe(true);
     sockets[0]!.drop(1000);
     expect(timer.has(1000)).toBe(false);
@@ -208,6 +213,19 @@ describe('TwitchConnector', () => {
     timer.fire(3_600_000);
     await settle();
     expect(lastStatus()).toMatchObject({ status: 'error', detail: expect.stringContaining('Reconnect Twitch') });
+    expect(onAuthLost).toHaveBeenCalledWith(expect.stringContaining('Twitch login expired'));
+  });
+
+  it('does not let a throwing onAuthLost escape', async () => {
+    onAuthLost.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    connector.start();
+    await settle();
+    validate.mockResolvedValue(false);
+    expect(() => timer.fire(3_600_000)).not.toThrow();
+    await settle();
+    expect(lastStatus()).toMatchObject({ status: 'error' });
   });
 
   it('stop closes the socket and prevents reconnects', async () => {

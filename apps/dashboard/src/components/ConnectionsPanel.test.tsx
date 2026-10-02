@@ -63,6 +63,27 @@ describe('ConnectionsPanel', () => {
     expect(screen.getByRole('link', { name: 'Google Privacy Policy' }).getAttribute('href')).toBe('https://policies.google.com/privacy');
   });
 
+  it('offers Connect on a row whose auth was lost', () => {
+    const h = handlers();
+    render(
+      <ConnectionsPanel
+        connections={{
+          twitch: { platform: 'twitch', state: 'error', detail: 'Twitch login expired. Reconnect Twitch on the Connections page.' },
+          youtube: { platform: 'youtube', state: 'error', clientConfigured: true, detail: 'YouTube sign-in expired. Reconnect YouTube on the Connections page.' },
+        }}
+        {...h}
+      />,
+    );
+    for (const platform of ['twitch', 'youtube'] as const) {
+      const row = within(screen.getByTestId(`conn-${platform}`));
+      expect(row.getByText(/Reconnect/)).toBeTruthy();
+      const button = row.getByRole('button', { name: 'Connect' });
+      expect(button).toHaveProperty('disabled', false);
+      fireEvent.click(button);
+      expect(h.onConnect).toHaveBeenCalledWith(platform);
+    }
+  });
+
   it('marks Kick as coming later', () => {
     render(<ConnectionsPanel connections={{ kick: { platform: 'kick', state: 'disconnected', detail: 'Kick arrives with the relay (M3).' } }} {...handlers()} />);
     expect(within(screen.getByTestId('conn-kick')).getByRole('button', { name: 'Connect' })).toHaveProperty('disabled', true);

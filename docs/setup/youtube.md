@@ -16,7 +16,7 @@ Dashboard → **Connections** → YouTube → paste the Client ID and Client sec
 - The tab says "YouTube is connected", and the row shows your channel name.
 
 ## Good to know
-- **7-day sign-in limit:** while your consent screen is in **Testing**, Google expires the sign-in after 7 days, and the status bar shows `youtube: error` ("YouTube sign-in expired…"). Press **Disconnect**, then **Connect**. To avoid it, set the app to **In production** (Audience → Publish app). You'll still see the "unverified" warning, but only you use it.
+- **7-day sign-in limit:** while your consent screen is in **Testing**, Google expires the sign-in after 7 days, and streamhub shows the error on the YouTube row; press **Connect** again. To avoid it, set the app to **In production** (Audience → Publish app). You'll still see the "unverified" warning, but only you use it.
 - **When you're not live,** the status bar shows `youtube: offline`, and streamhub checks for a broadcast once a minute (1 quota unit each).
 - **Deleted messages:** YouTube no longer reports deletions, so a message removed by a moderator may stay in the dashboard.
 - **Privacy:** your client secret and tokens live only in `.streamhub/secrets.json` on this computer. Never commit or share them. Chat is kept in memory, not saved.

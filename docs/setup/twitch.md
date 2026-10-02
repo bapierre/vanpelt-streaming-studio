@@ -17,4 +17,4 @@ Each person or fork registers their own app; Twitch asks apps not to share clien
 ## Connect
 Dashboard → **Connections** → Twitch → **Connect**. Open the link, enter the code shown, and approve. The row turns **connected** with your login.
 
-streamhub re-checks the login every hour, as Twitch requires. If the login expires or you revoke access, the status bar shows `twitch: error`. Go to Connections, press **Disconnect**, then **Connect** again.
+streamhub re-checks the login every hour, as Twitch requires. If the login expires or you revoke access, the Twitch row shows the error; press **Connect** again.

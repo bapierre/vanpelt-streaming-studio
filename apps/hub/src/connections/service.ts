@@ -38,6 +38,15 @@ export class ConnectionsService {
     this.deps.bus.subscribe(['connections.cmd.'], (e) => void this.handle(e));
   }
 
+  /** A connector stopped because the user must reconnect: show it on the Connections page. */
+  authLost(platform: 'twitch' | 'youtube', detail: string) {
+    this.state(
+      platform === 'youtube'
+        ? { platform, state: 'error', clientConfigured: true, detail }
+        : { platform, state: 'error', detail },
+    );
+  }
+
   async handleYouTubeCallback(query: Record<string, string | undefined>): Promise<string> {
     const { youtube } = this.deps;
     try {
