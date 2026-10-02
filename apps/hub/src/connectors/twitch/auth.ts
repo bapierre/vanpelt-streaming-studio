@@ -1,0 +1,164 @@
+import type { SecretsStore, TwitchSecrets } from '../../secrets/store';
+
+const ID_URL = 'https://id.twitch.tv/oauth2';
+const HELIX_URL = 'https://api.twitch.tv/helix';
+export const TWITCH_SCOPES = 'user:read:chat';
+
+export class TwitchAuthError extends Error {}
+
+export type DeviceCode = {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  intervalMs: number;
+  expiresAt: number;
+};
+
+type Options = {
+  clientId: string;
+  store: SecretsStore;
+  fetchFn?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+};
+
+/** Device Code Grant Flow for a Public client (no secret). See docs/connectors/twitch.md §2. */
+export class TwitchAuth {
+  private refreshing: Promise<TwitchSecrets> | null = null;
+  private readonly fetchFn: typeof fetch;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly now: () => number;
+
+  constructor(private readonly opts: Options) {
+    this.fetchFn = opts.fetchFn ?? fetch;
+    this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.now = opts.now ?? Date.now;
+  }
+
+  tokens(): TwitchSecrets | undefined {
+    return this.opts.store.get().twitch;
+  }
+
+  async startDeviceFlow(): Promise<DeviceCode> {
+    const res = await this.post('/device', { client_id: this.opts.clientId, scopes: TWITCH_SCOPES });
+    if (!res.ok) throw new TwitchAuthError(`Twitch refused to start sign-in (${res.status})`);
+    const b = (await res.json()) as {
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      interval: number;
+      expires_in: number;
+    };
+    return {
+      deviceCode: b.device_code,
+      userCode: b.user_code,
+      verificationUri: b.verification_uri,
+      intervalMs: b.interval * 1000,
+      expiresAt: this.now() + b.expires_in * 1000,
+    };
+  }
+
+  async pollDeviceFlow(code: DeviceCode, signal?: AbortSignal): Promise<TwitchSecrets> {
+    while (this.now() < code.expiresAt) {
+      if (signal?.aborted) throw new TwitchAuthError('sign-in cancelled');
+      await this.sleep(code.intervalMs);
+      if (signal?.aborted) throw new TwitchAuthError('sign-in cancelled');
+      const res = await this.post('/token', {
+        client_id: this.opts.clientId,
+        scopes: TWITCH_SCOPES,
+        device_code: code.deviceCode,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (res.ok) return this.saveTokens(String(body.access_token), String(body.refresh_token));
+      if (body.message === 'authorization_pending') continue;
+      throw new TwitchAuthError(`Twitch rejected the sign-in: ${String(body.message ?? res.status)}`);
+    }
+    throw new TwitchAuthError('The code expired before it was approved. Try again.');
+  }
+
+  /** Required by Twitch at startup and hourly. False means the user must reconnect. */
+  async validate(): Promise<boolean> {
+    const t = this.tokens();
+    if (!t) return false;
+    if (await this.whoAmI(t.accessToken)) return true;
+    try {
+      await this.refresh();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  refresh(): Promise<TwitchSecrets> {
+    this.refreshing ??= this.doRefresh().finally(() => {
+      this.refreshing = null;
+    });
+    return this.refreshing;
+  }
+
+  async helix(path: string, init: RequestInit = {}): Promise<Response> {
+    const t = this.tokens();
+    if (!t) throw new TwitchAuthError('Twitch is not connected');
+    const send = (token: string) =>
+      this.fetchFn(`${HELIX_URL}${path}`, {
+        ...init,
+        headers: {
+          ...(init.headers as Record<string, string> | undefined),
+          Authorization: `Bearer ${token}`,
+          'Client-Id': this.opts.clientId,
+        },
+      });
+    const res = await send(t.accessToken);
+    if (res.status !== 401) return res;
+    const fresh = await this.refresh();
+    return send(fresh.accessToken);
+  }
+
+  async clear(): Promise<void> {
+    await this.opts.store.update((s) => {
+      const rest = { ...s };
+      delete rest.twitch;
+      return rest;
+    });
+  }
+
+  private async doRefresh(): Promise<TwitchSecrets> {
+    const t = this.tokens();
+    if (!t) throw new TwitchAuthError('Twitch is not connected');
+    const res = await this.post('/token', {
+      grant_type: 'refresh_token',
+      refresh_token: t.refreshToken,
+      client_id: this.opts.clientId,
+    });
+    if (!res.ok) throw new TwitchAuthError(`Twitch token refresh failed (${res.status})`);
+    const b = (await res.json()) as { access_token: string; refresh_token: string };
+    const next = { ...t, accessToken: b.access_token, refreshToken: b.refresh_token };
+    await this.opts.store.update((s) => ({ ...s, twitch: next }));
+    return next;
+  }
+
+  private async saveTokens(accessToken: string, refreshToken: string): Promise<TwitchSecrets> {
+    const who = await this.whoAmI(accessToken);
+    if (!who) throw new TwitchAuthError('Twitch returned a token that does not validate');
+    const tokens = { accessToken, refreshToken, ...who };
+    await this.opts.store.update((s) => ({ ...s, twitch: tokens }));
+    return tokens;
+  }
+
+  private async whoAmI(token: string): Promise<{ userId: string; login: string } | null> {
+    const res = await this.fetchFn(`${ID_URL}/validate`, { headers: { Authorization: `OAuth ${token}` } });
+    if (res.status === 401) return null;
+    if (!res.ok) throw new TwitchAuthError(`Twitch token validation failed (${res.status})`);
+    const b = (await res.json()) as { user_id: string; login: string };
+    return { userId: b.user_id, login: b.login };
+  }
+
+  private post(path: string, form: Record<string, string>) {
+    return this.fetchFn(`${ID_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(form).toString(),
+    });
+  }
+}
