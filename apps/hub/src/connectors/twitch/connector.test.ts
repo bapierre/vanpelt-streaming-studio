@@ -3,6 +3,7 @@ import type { Envelope } from '@streamhub/shared';
 import { Bus } from '../../bus/bus';
 import { FakeTimer, settle } from '../../testing/timer';
 import type { SocketLike } from '../types';
+import { TwitchLoginRejectedError } from './auth';
 import { TwitchConnector } from './connector';
 import chatMessage from './fixtures/chat-message.json';
 import messageDelete from './fixtures/message-delete.json';
@@ -214,6 +215,17 @@ describe('TwitchConnector', () => {
     await settle();
     expect(lastStatus()).toMatchObject({ status: 'error', detail: expect.stringContaining('Reconnect Twitch') });
     expect(onAuthLost).toHaveBeenCalledWith(expect.stringContaining('Twitch login expired'));
+  });
+
+  it('stops instead of looping when the token refresh is rejected while subscribing', async () => {
+    helix.mockRejectedValue(new TwitchLoginRejectedError('Twitch rejected the token refresh (400)'));
+    connector.start();
+    sockets[0]!.frame(welcome());
+    await settle();
+    expect(lastStatus()).toMatchObject({ status: 'error', detail: expect.stringContaining('Reconnect Twitch') });
+    expect(onAuthLost).toHaveBeenCalledWith(expect.stringContaining('Reconnect Twitch'));
+    expect(sockets[0]!.closed).toBe(true);
+    expect(timer.queue).toEqual([]);
   });
 
   it('does not let a throwing onAuthLost escape', async () => {

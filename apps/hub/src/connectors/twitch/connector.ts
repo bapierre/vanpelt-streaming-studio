@@ -4,7 +4,7 @@ import { backoffDelay } from '../../util/backoff';
 import { describeError } from '../../util/errors';
 import { realTimer, type Timer } from '../../util/timer';
 import type { Connector, SocketFactory, SocketLike } from '../types';
-import type { TwitchAuth } from './auth';
+import { TwitchLoginRejectedError, type TwitchAuth } from './auth';
 import {
   normalizeTwitchClear,
   normalizeTwitchDelete,
@@ -179,6 +179,10 @@ export class TwitchConnector implements Connector {
       this.status('live');
     } catch (err) {
       if (socket !== this.socket) return;
+      if (err instanceof TwitchLoginRejectedError) {
+        this.authLost(`Twitch login expired. ${RECONNECT_HINT}`);
+        return;
+      }
       this.status('error', describeError(err));
       this.dropSocket();
       this.scheduleReconnect();
