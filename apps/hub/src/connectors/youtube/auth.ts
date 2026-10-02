@@ -210,14 +210,26 @@ export class YouTubeAuth implements TokenSource {
     return body.access_token;
   }
 
+  /**
+   * Only 400/401 are definitive (invalid_grant, invalid_client, ...) and throw YouTubeAuthError.
+   * 5xx, 429 and network failures throw a plain Error so callers back off and retry.
+   */
   private async token(form: Record<string, string>): Promise<TokenResponse> {
-    const res = await this.fetchFn(TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(form).toString(),
-    });
+    let res: Response;
+    try {
+      res = await this.fetchFn(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(form).toString(),
+      });
+    } catch {
+      throw new Error('Google token service unavailable (network error)');
+    }
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!res.ok) throw new YouTubeAuthError(`Google token request failed: ${String(body.error ?? res.status)}`);
-    return body as unknown as TokenResponse;
+    if (res.ok) return body as unknown as TokenResponse;
+    if (res.status === 400 || res.status === 401) {
+      throw new YouTubeAuthError(`Google token request failed: ${String(body.error ?? res.status)}`);
+    }
+    throw new Error(`Google token service unavailable (${res.status})`);
   }
 }

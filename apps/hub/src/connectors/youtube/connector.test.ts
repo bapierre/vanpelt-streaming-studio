@@ -173,6 +173,21 @@ describe('YouTubeConnector', () => {
     expect(timer.queue).toEqual([]);
   });
 
+  it('backs off and retries when the token service is temporarily unavailable', async () => {
+    tokens.accessToken.mockRejectedValueOnce(new Error('Google token service unavailable (503)'));
+    connector.start();
+    await settle();
+    expect(lastStatus()).toMatchObject({
+      status: 'error',
+      detail: expect.stringContaining('unavailable (503)'),
+    });
+    expect(timer.has(1000)).toBe(true);
+    timer.fire(1000);
+    await settle();
+    expect(api.findActiveChat).toHaveBeenCalledTimes(1);
+    expect(streams).toHaveLength(1);
+  });
+
   it('publishes best-effort deletions and ban clears', async () => {
     connector.start();
     await settle();

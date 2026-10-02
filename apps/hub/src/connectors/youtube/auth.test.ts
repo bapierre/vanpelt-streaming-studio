@@ -107,6 +107,32 @@ describe('YouTubeAuth', () => {
     expect(auth.connected()).toBe(false);
   });
 
+  it.each([
+    ['a 503', () => json(503, {})],
+    ['a 429', () => json(429, { error: 'rate_limited' })],
+    [
+      'a network failure',
+      () => {
+        throw new TypeError('fetch failed');
+      },
+    ],
+  ])('treats %s during refresh as temporary and keeps the tokens', async (_label, respond) => {
+    const auth = make(fakeFetch(respond));
+    const youtube = { clientId: 'cid', clientSecret: 's', refreshToken: 'rt' };
+    await store.update((s) => ({ ...s, youtube }));
+    const err = await auth.accessToken().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(YouTubeAuthError);
+    expect((err as Error).message).toMatch(/Google token service unavailable/);
+    expect(store.get().youtube).toEqual(youtube);
+  });
+
+  it('treats a 401 from Google as a definitive sign-in failure', async () => {
+    const auth = make(fakeFetch(() => json(401, { error: 'invalid_client' })));
+    await store.update((s) => ({ ...s, youtube: { clientId: 'cid', clientSecret: 's', refreshToken: 'rt' } }));
+    await expect(auth.accessToken()).rejects.toBeInstanceOf(YouTubeAuthError);
+  });
+
   it('throws when not connected', async () => {
     await expect(make().accessToken()).rejects.toBeInstanceOf(YouTubeAuthError);
   });
