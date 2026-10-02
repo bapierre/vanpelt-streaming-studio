@@ -153,6 +153,38 @@ describe('YouTubeConnector', () => {
     expect(lastStatus()).toMatchObject({ status: 'offline' });
   });
 
+  it('reports a disabled chat as offline and re-checks every minute', async () => {
+    connector.start();
+    await settle();
+    streams[0]!.handlers.onError(new YouTubeApiError('YouTube API 403 (liveChatDisabled)', 'chatDisabled'));
+    expect(streams[0]!.cancelled).toBe(true);
+    expect(lastStatus()).toEqual({
+      platform: 'youtube',
+      status: 'offline',
+      detail: 'Live chat is turned off for this broadcast',
+    });
+    expect(timer.queue.map((e) => e.ms)).toEqual([60_000]);
+    timer.fire(60_000);
+    await settle();
+    expect(api.findActiveChat).toHaveBeenCalledTimes(2);
+    expect(streams).toHaveLength(2);
+  });
+
+  it('reports a disabled chat found while polling the same way', async () => {
+    connector.start();
+    await settle();
+    for (let i = 0; i < 3; i++) {
+      streams.at(-1)!.handlers.onError(new YouTubeApiError('unavailable', 'other'));
+      timer.fire(timer.queue[0]!.ms);
+      await settle();
+    }
+    api.pollChat.mockRejectedValueOnce(new YouTubeApiError('YouTube API 403 (liveChatDisabled)', 'chatDisabled'));
+    timer.fire(4000);
+    await settle();
+    expect(lastStatus()).toMatchObject({ status: 'offline', detail: 'Live chat is turned off for this broadcast' });
+    expect(timer.queue.map((e) => e.ms)).toEqual([60_000]);
+  });
+
   it('invalidates the token on an auth error and retries', async () => {
     connector.start();
     await settle();

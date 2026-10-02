@@ -249,10 +249,11 @@ export class YouTubeConnector implements Connector {
     if (r.offlineAt) this.endChat();
   }
 
-  private endChat() {
+  /** Leaves the current chat and looks for a broadcast again on the offline cadence. */
+  private endChat(detail = 'Broadcast ended') {
     this.dropStream();
     this.chat = null;
-    this.status('offline', 'Broadcast ended');
+    this.status('offline', detail);
     this.later(() => void this.findChat(), this.offlineCheckMs);
   }
 
@@ -266,6 +267,10 @@ export class YouTubeConnector implements Connector {
     if (err instanceof YouTubeApiError) {
       if (err.kind === 'ended') {
         this.endChat();
+        return;
+      }
+      if (err.kind === 'chatDisabled') {
+        this.endChat('Live chat is turned off for this broadcast');
         return;
       }
       if (err.kind === 'auth') this.opts.tokens.invalidate();

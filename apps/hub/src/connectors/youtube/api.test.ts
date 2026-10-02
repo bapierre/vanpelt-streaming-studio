@@ -45,6 +45,11 @@ describe('pollChat', () => {
     const api = createYouTubeApi(fakeFetch(() => googleError(403, 'liveChatEnded')));
     await expect(api.pollChat('t', 'CHAT')).rejects.toMatchObject({ kind: 'ended' });
   });
+
+  it('tells a disabled chat apart from an ended one', async () => {
+    const api = createYouTubeApi(fakeFetch(() => googleError(403, 'liveChatDisabled')));
+    await expect(api.pollChat('t', 'CHAT')).rejects.toMatchObject({ kind: 'chatDisabled' });
+  });
 });
 
 describe('myChannelTitle', () => {
@@ -66,6 +71,8 @@ describe('gRPC', () => {
     expect(mapGrpcError({ code: 16, details: 'bad token' }).kind).toBe('auth');
     expect(mapGrpcError({ code: 9, details: 'chat ended' }).kind).toBe('ended');
     expect(mapGrpcError({ code: 5 }).kind).toBe('ended');
+    expect(mapGrpcError({ code: 9, details: 'liveChatDisabled' }).kind).toBe('chatDisabled');
+    expect(mapGrpcError({ code: 9, details: 'The live chat is disabled.' }).kind).toBe('chatDisabled');
     expect(mapGrpcError({ code: 8 }).kind).toBe('rate');
     expect(mapGrpcError({ code: 14, details: 'unavailable' })).toBeInstanceOf(YouTubeApiError);
     expect(mapGrpcError({ code: 14 }).kind).toBe('other');

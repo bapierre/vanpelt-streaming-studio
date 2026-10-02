@@ -7,7 +7,8 @@ const API = 'https://www.googleapis.com/youtube/v3';
 const GRPC_HOST = 'youtube.googleapis.com:443';
 const PROTO_PATH = fileURLToPath(new URL('./stream_list.proto', import.meta.url));
 
-export type YouTubeApiErrorKind = 'auth' | 'ended' | 'rate' | 'other';
+/** `chatDisabled`: the broadcast is live but its chat is turned off. */
+export type YouTubeApiErrorKind = 'auth' | 'ended' | 'chatDisabled' | 'rate' | 'other';
 
 export class YouTubeApiError extends Error {
   constructor(
@@ -34,7 +35,8 @@ export interface YouTubeApi {
 }
 
 const RATE_REASONS = new Set(['quotaExceeded', 'rateLimitExceeded', 'dailyLimitExceeded', 'userRateLimitExceeded']);
-const ENDED_REASONS = new Set(['liveChatEnded', 'liveChatDisabled', 'liveChatNotFound']);
+const ENDED_REASONS = new Set(['liveChatEnded', 'liveChatNotFound']);
+const CHAT_DISABLED = /liveChatDisabled|chat is disabled/i;
 
 async function restError(res: Response): Promise<YouTubeApiError> {
   const body = (await res.json().catch(() => ({}))) as {
@@ -44,6 +46,7 @@ async function restError(res: Response): Promise<YouTubeApiError> {
   const message = `YouTube API ${res.status}${reason ? ` (${reason})` : ''}`;
   if (res.status === 401) return new YouTubeApiError(message, 'auth');
   if (RATE_REASONS.has(reason)) return new YouTubeApiError('YouTube quota or rate limit reached', 'rate');
+  if (reason === 'liveChatDisabled') return new YouTubeApiError(message, 'chatDisabled');
   if (ENDED_REASONS.has(reason) || res.status === 404) return new YouTubeApiError(message, 'ended');
   return new YouTubeApiError(message, 'other');
 }
@@ -55,7 +58,7 @@ export function mapGrpcError(err: { code?: number; details?: string; message?: s
       return new YouTubeApiError(message, 'auth');
     case grpc.status.FAILED_PRECONDITION:
     case grpc.status.NOT_FOUND:
-      return new YouTubeApiError(message, 'ended');
+      return new YouTubeApiError(message, CHAT_DISABLED.test(message) ? 'chatDisabled' : 'ended');
     case grpc.status.RESOURCE_EXHAUSTED:
       return new YouTubeApiError('YouTube quota or rate limit reached', 'rate');
     default:
