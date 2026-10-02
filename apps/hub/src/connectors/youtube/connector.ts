@@ -9,6 +9,9 @@ import { YouTubeAuthError, type TokenSource } from './auth';
 import { normalizeYouTubeItem, type YtListResponse } from './normalize';
 
 const BACKLOG_MS = 5000;
+/** A stream must stay open this long before its responses count as proof of health. */
+const STABLE_MS = 30_000;
+const RATE_BACKOFF_MS = 60_000;
 const SEEN_LIMIT = 2000;
 const MIN_POLL_MS = 1000;
 
@@ -147,12 +150,13 @@ export class YouTubeConnector implements Connector {
       void this.poll(chat, token);
       return;
     }
+    const openedAt = this.now();
     let terminated = false;
     const fail = (err: unknown) => {
       if (this.chat !== chat || terminated) return;
       terminated = true;
       this.dropStream();
-      if (!(err instanceof YouTubeApiError) || err.kind === 'other' || err.kind === 'rate') {
+      if (!(err instanceof YouTubeApiError) || err.kind === 'other') {
         chat.failures++;
         if (chat.failures >= this.maxStreamFailures) {
           chat.mode = 'poll';
@@ -167,8 +171,10 @@ export class YouTubeConnector implements Connector {
         onResponse: (r) => {
           if (this.chat !== chat || terminated) return;
           this.guard('stream response failed:', () => {
-            chat.failures = 0;
-            this.attempt = 0;
+            if (this.now() - openedAt >= STABLE_MS) {
+              chat.failures = 0;
+              this.attempt = 0;
+            }
             this.handleResponse(chat, r);
           });
         },
@@ -264,7 +270,9 @@ export class YouTubeConnector implements Connector {
     } else {
       this.status('error', describeError(err));
     }
-    this.later(retry, backoffDelay(this.attempt++, this.rand));
+    const delay = backoffDelay(this.attempt++, this.rand);
+    const rate = err instanceof YouTubeApiError && err.kind === 'rate';
+    this.later(retry, rate ? Math.max(RATE_BACKOFF_MS, delay) : delay);
   }
 
   private status(status: ConnectorStatus, detail?: string) {

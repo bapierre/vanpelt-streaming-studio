@@ -25,7 +25,10 @@ let tokens: {
 };
 let connector: YouTubeConnector;
 
+let clock = T0;
+
 beforeEach(() => {
+  clock = T0;
   bus = new Bus();
   timer = new FakeTimer();
   events = [];
@@ -55,7 +58,7 @@ beforeEach(() => {
     channel: () => 'My Channel',
     timer,
     rand: () => 1,
-    now: () => T0,
+    now: () => clock,
   });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -289,5 +292,47 @@ describe('YouTubeConnector hardening', () => {
       detail: expect.stringContaining('fetch failed'),
     });
     expect(timer.has(1000)).toBe(true);
+  });
+});
+
+describe('YouTubeConnector backoff stability', () => {
+  it('does not reset backoff for a stream that fails right after its first response', async () => {
+    connector.start();
+    await settle();
+    const delays: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      streams.at(-1)!.handlers.onResponse({ items: [] });
+      streams.at(-1)!.handlers.onError(new YouTubeApiError('x', 'other'));
+      delays.push(timer.queue[0]!.ms);
+      timer.fire(timer.queue[0]!.ms);
+      await settle();
+    }
+    expect(delays).toEqual([1000, 2000, 4000]);
+    expect(api.pollChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets backoff once the stream has been open for 30 s', async () => {
+    connector.start();
+    await settle();
+    streams[0]!.handlers.onError(new YouTubeApiError('x', 'other'));
+    timer.fire(1000);
+    await settle();
+    clock += 30_000;
+    streams[1]!.handlers.onResponse({ items: [] });
+    streams[1]!.handlers.onError(new YouTubeApiError('x', 'other'));
+    expect(timer.queue.map((e) => e.ms)).toEqual([1000]);
+  });
+
+  it('does not count rate errors toward polling and waits at least a minute', async () => {
+    connector.start();
+    await settle();
+    for (let i = 0; i < 3; i++) {
+      streams.at(-1)!.handlers.onError(new YouTubeApiError('quota', 'rate'));
+      expect(timer.queue[0]!.ms).toBeGreaterThanOrEqual(60_000);
+      timer.fire(timer.queue[0]!.ms);
+      await settle();
+    }
+    expect(api.pollChat).not.toHaveBeenCalled();
+    expect(api.streamChat).toHaveBeenCalledTimes(4);
   });
 });
