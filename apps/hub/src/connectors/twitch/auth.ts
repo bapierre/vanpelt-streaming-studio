@@ -6,6 +6,9 @@ export const TWITCH_SCOPES = 'user:read:chat';
 
 export class TwitchAuthError extends Error {}
 
+/** Twitch definitively rejected the refresh token (HTTP 400/401): the user must reconnect. */
+export class TwitchLoginRejectedError extends TwitchAuthError {}
+
 export type DeviceCode = {
   deviceCode: string;
   userCode: string;
@@ -81,12 +84,13 @@ export class TwitchAuth {
   async validate(): Promise<boolean> {
     const t = this.tokens();
     if (!t) return false;
-    if (await this.whoAmI(t.accessToken)) return true;
     try {
+      if (await this.whoAmI(t.accessToken)) return true;
       await this.refresh();
       return true;
-    } catch {
-      return false;
+    } catch (err) {
+      // Only a definitive rejection means reconnect; network errors and 5xx are re-checked next hour.
+      return !(err instanceof TwitchLoginRejectedError);
     }
   }
 
@@ -131,10 +135,18 @@ export class TwitchAuth {
       refresh_token: t.refreshToken,
       client_id: this.opts.clientId,
     });
+    if (res.status === 400 || res.status === 401) {
+      throw new TwitchLoginRejectedError(`Twitch rejected the token refresh (${res.status})`);
+    }
     if (!res.ok) throw new TwitchAuthError(`Twitch token refresh failed (${res.status})`);
     const b = (await res.json()) as { access_token: string; refresh_token: string };
-    const next = { ...t, accessToken: b.access_token, refreshToken: b.refresh_token };
-    await this.opts.store.update((s) => ({ ...s, twitch: next }));
+    let next: TwitchSecrets | undefined;
+    await this.opts.store.update((s) => {
+      if (!s.twitch) return s; // disconnected while the refresh was in flight
+      next = { ...s.twitch, accessToken: b.access_token, refreshToken: b.refresh_token };
+      return { ...s, twitch: next };
+    });
+    if (!next) throw new TwitchAuthError('Twitch is not connected');
     return next;
   }
 

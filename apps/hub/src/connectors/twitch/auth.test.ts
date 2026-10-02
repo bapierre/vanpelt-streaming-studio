@@ -122,6 +122,43 @@ describe('TwitchAuth tokens', () => {
     expect(await auth.validate()).toBe(true);
   });
 
+  it('a disconnect during an in-flight refresh does not bring the tokens back', async () => {
+    await seed();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const fetchFn = fakeFetch(async () => {
+      await gate;
+      return json(200, { access_token: 'new', refresh_token: 'r2' });
+    });
+    const auth = new TwitchAuth({ clientId: 'cid', store, fetchFn });
+    const pending = auth.refresh();
+    const outcome = expect(pending).rejects.toThrow('not connected');
+    await auth.clear();
+    release();
+    await outcome;
+    expect(store.get().twitch).toBeUndefined();
+  });
+
+  it('validate is true when the validate request throws a network error', async () => {
+    await seed();
+    const fetchFn = fakeFetch(() => {
+      throw new TypeError('fetch failed');
+    });
+    expect(await new TwitchAuth({ clientId: 'cid', store, fetchFn }).validate()).toBe(true);
+  });
+
+  it('validate is true when Twitch answers 503', async () => {
+    await seed();
+    const fetchFn = fakeFetch(() => json(503, {}));
+    expect(await new TwitchAuth({ clientId: 'cid', store, fetchFn }).validate()).toBe(true);
+  });
+
+  it('validate is true when the token is dead but the refresh hits a 503', async () => {
+    await seed();
+    const fetchFn = fakeFetch(({ url }) => (url.endsWith('/validate') ? json(401, {}) : json(503, {})));
+    expect(await new TwitchAuth({ clientId: 'cid', store, fetchFn }).validate()).toBe(true);
+  });
+
   it('clear removes the Twitch tokens only', async () => {
     await seed();
     await store.update((s) => ({ ...s, youtube: { clientId: 'c', clientSecret: 's' } }));
