@@ -1,20 +1,56 @@
 import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
 import OBSWebSocket from 'obs-websocket-js';
+import { WebSocket } from 'ws';
 import { Bus } from './bus/bus';
 import { loadConfig } from './config';
+import { ConnectionsService } from './connections/service';
+import { ConnectorManager } from './connectors/manager';
+import { TwitchAuth } from './connectors/twitch/auth';
+import { TwitchConnector } from './connectors/twitch/connector';
+import type { Connector, SocketLike } from './connectors/types';
+import { createYouTubeApi } from './connectors/youtube/api';
+import { YouTubeAuth } from './connectors/youtube/auth';
+import { YouTubeConnector } from './connectors/youtube/connector';
 import { ObsBridge, type ObsClient } from './obs/bridge';
+import { SecretsStore } from './secrets/store';
 import { createServer } from './server';
 
-loadDotenv({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) });
+loadDotenv({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
 const cfg = loadConfig();
 
 const bus = new Bus();
+const store = new SecretsStore(fileURLToPath(new URL('../../../.streamhub/secrets.json', import.meta.url)));
+await store.load();
+
+const twitchAuth = cfg.twitchClientId ? new TwitchAuth({ clientId: cfg.twitchClientId, store }) : null;
+const youtubeAuth = new YouTubeAuth({ store, redirectUri: `http://127.0.0.1:${cfg.port}/oauth/youtube/callback` });
+const youtubeApi = createYouTubeApi();
+
+const connectors: Connector[] = [
+  new YouTubeConnector({ bus, tokens: youtubeAuth, api: youtubeApi, channel: () => youtubeAuth.account() ?? 'YouTube' }),
+];
+if (twitchAuth) {
+  connectors.push(
+    new TwitchConnector({ bus, auth: twitchAuth, createSocket: (url) => new WebSocket(url) as unknown as SocketLike }),
+  );
+}
+const manager = new ConnectorManager(connectors);
+const connections = new ConnectionsService({
+  bus,
+  twitch: twitchAuth,
+  youtube: youtubeAuth,
+  youtubeApi,
+  restart: (p) => manager.restart(p),
+  halt: (p) => manager.halt(p),
+});
+
 const app = await createServer({
   bus,
   port: cfg.port,
   dev: cfg.dev,
   dashboardDir: fileURLToPath(new URL('../../dashboard/dist', import.meta.url)),
+  youtubeCallback: (q) => connections.handleYouTubeCallback(q),
 });
 const obs = new ObsBridge({
   bus,
@@ -33,13 +69,15 @@ try {
   throw err;
 }
 obs.start();
+connections.start();
+manager.startAll();
 
 let shuttingDown = false;
 const shutdown = async () => {
   if (shuttingDown) return;
   shuttingDown = true;
   setTimeout(() => process.exit(1), 3000).unref();
-  await obs.stop();
+  await Promise.all([obs.stop(), manager.stopAll()]);
   await app.close();
   process.exit(0);
 };

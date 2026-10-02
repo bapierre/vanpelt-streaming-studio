@@ -1,0 +1,151 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Envelope } from '@streamhub/shared';
+import { Bus } from '../bus/bus';
+import { settle } from '../testing/timer';
+import { ConnectionsService, type ConnectionsDeps } from './service';
+
+let bus: Bus;
+let all: Envelope[];
+let twitch: { [K in 'tokens' | 'startDeviceFlow' | 'pollDeviceFlow' | 'clear']: ReturnType<typeof vi.fn> };
+let youtube: Record<string, ReturnType<typeof vi.fn>>;
+let restart: ReturnType<typeof vi.fn>;
+let halt: ReturnType<typeof vi.fn>;
+let service: ConnectionsService;
+
+const make = (overrides: Partial<ConnectionsDeps> = {}) =>
+  new ConnectionsService({
+    bus,
+    twitch: twitch as never,
+    youtube: youtube as never,
+    youtubeApi: { myChannelTitle: vi.fn(async () => 'Your Average Tech Founder') },
+    restart: restart as never,
+    halt: halt as never,
+    ...overrides,
+  });
+
+beforeEach(() => {
+  bus = new Bus();
+  all = [];
+  bus.subscribe(['*'], (e) => all.push(e));
+  twitch = {
+    tokens: vi.fn(() => undefined),
+    startDeviceFlow: vi.fn(async () => ({ deviceCode: 'd', userCode: 'ABCDEFGH', verificationUri: 'https://www.twitch.tv/activate?public=true&device-code=ABCDEFGH', intervalMs: 5000, expiresAt: 1e15 })),
+    pollDeviceFlow: vi.fn(async () => ({ accessToken: 'a', refreshToken: 'r', userId: '1', login: 'yatf' })),
+    clear: vi.fn(async () => {}),
+  };
+  let configured = false;
+  youtube = {
+    clientConfigured: vi.fn(() => configured),
+    connected: vi.fn(() => false),
+    account: vi.fn(() => undefined),
+    setClient: vi.fn(async () => void (configured = true)),
+    setAccount: vi.fn(async () => {}),
+    beginAuth: vi.fn(() => 'https://accounts.google.com/o/oauth2/v2/auth?x=1'),
+    completeAuth: vi.fn(async () => {}),
+    accessToken: vi.fn(async () => 'tok'),
+    clearTokens: vi.fn(async () => {}),
+  };
+  restart = vi.fn();
+  halt = vi.fn(async () => {});
+  service = make();
+});
+
+const states = (platform: string) =>
+  all.filter((e) => e.type === 'connections.state' && (e.payload as { platform: string }).platform === platform).map((e) => e.payload);
+const cmd = (type: string, payload: unknown) => bus.publish({ type, payload, source: 'dashboard' });
+
+describe('ConnectionsService', () => {
+  it('publishes initial states', () => {
+    twitch.tokens.mockReturnValue({ login: 'yatf' });
+    service.start();
+    expect(states('twitch')).toEqual([{ platform: 'twitch', state: 'connected', account: 'yatf' }]);
+    expect(states('youtube')).toEqual([{ platform: 'youtube', state: 'disconnected', clientConfigured: false }]);
+    expect(states('kick')).toEqual([{ platform: 'kick', state: 'disconnected', detail: 'Kick arrives with the relay (M3).' }]);
+  });
+
+  it('explains how to configure Twitch when no client id is set', () => {
+    make({ twitch: null }).start();
+    expect(states('twitch')[0]).toMatchObject({ state: 'disconnected', detail: expect.stringContaining('TWITCH_CLIENT_ID') });
+  });
+
+  it('runs the Twitch device flow and restarts the connector', async () => {
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    expect(states('twitch').slice(1)).toEqual([
+      { platform: 'twitch', state: 'pending', userCode: 'ABCDEFGH', verificationUri: 'https://www.twitch.tv/activate?public=true&device-code=ABCDEFGH' },
+      { platform: 'twitch', state: 'connected', account: 'yatf' },
+    ]);
+    expect(restart).toHaveBeenCalledWith('twitch');
+  });
+
+  it('reports a failed Twitch sign-in', async () => {
+    twitch.pollDeviceFlow.mockRejectedValue(new Error('The code expired before it was approved. Try again.'));
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    expect(states('twitch').at(-1)).toEqual({ platform: 'twitch', state: 'error', detail: 'The code expired before it was approved. Try again.' });
+  });
+
+  it('disconnects Twitch: stops the connector and forgets tokens', async () => {
+    service.start();
+    cmd('connections.cmd.disconnect', { platform: 'twitch' });
+    await settle();
+    expect(halt).toHaveBeenCalledWith('twitch');
+    expect(twitch.clear).toHaveBeenCalled();
+    expect(states('twitch').at(-1)).toMatchObject({ state: 'disconnected' });
+  });
+
+  it('saves the YouTube client and never publishes the client secret', async () => {
+    service.start();
+    cmd('connections.cmd.setYoutubeClient', { clientId: 'cid', clientSecret: 'TOPSECRET' });
+    await settle();
+    expect(youtube.setClient).toHaveBeenCalledWith('cid', 'TOPSECRET');
+    expect(states('youtube').at(-1)).toEqual({ platform: 'youtube', state: 'disconnected', clientConfigured: true });
+    const leaked = all.filter((e) => e.type !== 'connections.cmd.setYoutubeClient' && JSON.stringify(e).includes('TOPSECRET'));
+    expect(leaked).toEqual([]);
+  });
+
+  it('asks for a client before YouTube sign-in', async () => {
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'youtube' });
+    await settle();
+    expect(states('youtube').at(-1)).toMatchObject({ state: 'error', detail: expect.stringContaining('docs/setup/youtube.md') });
+  });
+
+  it('runs the YouTube sign-in through the callback', async () => {
+    youtube.clientConfigured!.mockReturnValue(true);
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'youtube' });
+    await settle();
+    expect(states('youtube').at(-1)).toEqual({
+      platform: 'youtube',
+      state: 'pending',
+      clientConfigured: true,
+      authUrl: 'https://accounts.google.com/o/oauth2/v2/auth?x=1',
+    });
+    const page = await service.handleYouTubeCallback({ code: 'c', state: 's' });
+    expect(youtube.completeAuth).toHaveBeenCalledWith({ code: 'c', state: 's', error: undefined });
+    expect(youtube.setAccount).toHaveBeenCalledWith('Your Average Tech Founder');
+    expect(page).toContain('YouTube is connected');
+    expect(states('youtube').at(-1)).toEqual({ platform: 'youtube', state: 'connected', clientConfigured: true, account: 'Your Average Tech Founder' });
+    expect(restart).toHaveBeenCalledWith('youtube');
+  });
+
+  it('reports a rejected YouTube callback', async () => {
+    youtube.clientConfigured!.mockReturnValue(true);
+    youtube.completeAuth!.mockRejectedValue(new Error('This sign-in link is invalid or expired.'));
+    service.start();
+    const page = await service.handleYouTubeCallback({ state: 'forged', code: 'c' });
+    expect(page).toContain('invalid or expired');
+    expect(states('youtube').at(-1)).toMatchObject({ state: 'error' });
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it('answers Kick with the M3 note', async () => {
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'kick' });
+    await settle();
+    expect(states('kick').at(-1)).toMatchObject({ state: 'error', detail: 'Kick arrives with the relay (M3).' });
+  });
+});

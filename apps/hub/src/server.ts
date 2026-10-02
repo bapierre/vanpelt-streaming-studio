@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { Bus } from './bus/bus';
 import { attachWebSocket } from './ws/server';
@@ -9,7 +9,8 @@ export type ServerOptions = {
   port: number;
   dev: boolean;
   dashboardDir: string;
-  logger?: boolean;
+  logger?: FastifyServerOptions['logger'];
+  youtubeCallback?: (query: Record<string, string | undefined>) => Promise<string>;
 };
 
 export function allowedOrigins(port: number, dev: boolean): string[] {
@@ -21,6 +22,14 @@ export function allowedOrigins(port: number, dev: boolean): string[] {
 export async function createServer(opts: ServerOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? true });
   app.get('/health', async () => ({ ok: true }));
+
+  if (opts.youtubeCallback) {
+    const callback = opts.youtubeCallback;
+    // The query carries a one-time auth code, so this route must never be request-logged.
+    app.get('/oauth/youtube/callback', { logLevel: 'silent' }, async (req, reply) =>
+      reply.type('text/plain; charset=utf-8').send(await callback(req.query as Record<string, string | undefined>)),
+    );
+  }
 
   if (existsSync(opts.dashboardDir)) {
     await app.register(fastifyStatic, { root: opts.dashboardDir });
