@@ -1,0 +1,43 @@
+# M2 follow-ups (deferred minor findings)
+
+Collected from task reviews and the final whole-branch review of plans/2026-10-01-streamhub-m2-chat.md. None blocks merge; the final review triaged them as safe to defer.
+
+- Task 1: EVENTS.md "Retained state" paragraph does not mention connections.state (per platform)
+- Task 2: store.load() does not validate parsed JSON shape (null/array/string)
+- Task 2: stale .tmp with looser perms keeps them; tmp file with secrets not removed if write/rename fails
+- Task 2: load() does not await in-flight writes (theoretical, load once at startup)
+- Task 2: store.test console.warn spy not restored
+- Task 3: helix may start a second refresh for a 401 that arrives after a refresh finished
+- Task 3: helix casts init.headers to Record (Headers instances dropped)
+- Task 3: refresh/poll token responses not validated (malformed 200 would persist undefined)
+- Task 3: pollDeviceFlow sleep not abortable (cancel lag <= interval)
+- Task 3: shared sleeps array in auth.test never reset
+- Task 3: disconnect-then-reconnect during an in-flight refresh could write old-session tokens over a fresh login (narrow window)
+- Task 4: gif url passed through unchecked (renderer safeHttpsUrl in Task 11 enforces https-only; ⚠️ cross-task resolved by plan Task 11)
+- Task 4: clear tests share one it; null emote object fallback untested
+- Task 5: second session_reconnect before welcome orphans original old socket
+- Task 5: non-auth revocations (version_removed etc.) only console.warn, status stays live
+- Task 5: keepalive_timeout_seconds not clamped to 10..600
+- Task 5: open(url,true) throwing in handover path only warns (recovers via old socket close/watchdog)
+- Task 5: onWelcome async rejection not caught by onFrame try/catch (only status/publish could throw)
+- Task 6: error callback accepted without state check (CSRF can cancel a pending sign-in; plan-mandated behaviour)
+- Task 6: 200 token response not validated (missing expires_in → NaN)
+- Task 6: token fetch has no timeout; single-flight refresh can stall callers ~300s
+- Task 6: invalidate() during in-flight refresh is lost (harmless)
+- Task 6: conditional invalid_grant clear untested
+- Task 7: chatEndedEvent without id returns null; empty-text paid events dropped; profileImageUrl not https-checked (render-side safeHttpsUrl must cover avatars if rendered); fromGrpcResponse empty paths untested
+- Task 8: no test asserts StreamList request/metadata shape
+- Task 9: this.stream overwrite without drop (unreachable today)
+- Task 9: liveChatDisabled mapped to ended → loops find/ended every 60s showing "Broadcast ended" on a live stream (flag for final review)
+- Task 9: missing tests for mid-broadcast YouTubeAuthError halt and stale-chat callbacks; spies not restored
+- Task 10: prettier --check flags ~30 files repo-wide (lint does not enforce) — candidate for one formatting commit at the end
+- Task 10: connections.start() after listen leaves a tiny window where commands are dropped
+- Task 10: command failures in handle() only logged, no error state published
+- Task 10: req.query cast ignores array params
+- Task 10: a newer Twitch connect aborts the old flow but an in-flight /token can still persist the first flow tokens while UI shows pending (same user; next flow/disconnect overwrites)
+- Task 11: delete/clear arriving before backfill resolves can be undone by the merge (narrow window)
+- Task 11: role key duplicates; PLATFORMS[unknown] would throw (hub zod-validates platform); duplicate import in test
+- Task 11: hiding the anchor platform while paused counts all visible; filter re-scroll untested
+- Task 12: no Cancel on Change Google client form; rel assertion loose; pending without userCode shows nothing
+- Task 13: Connect enabled when TWITCH_CLIENT_ID unset / YouTube client unsaved (clicking yields an error state with the setup hint — acceptable); one console error on load (likely favicon 404 seen in M1)
+- Final: stale auth loss can overwrite a pending sign-in row; twitch publish not wrapped (Bus.publish does not throw)
