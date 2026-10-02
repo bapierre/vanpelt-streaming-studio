@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SecretsStore } from './store';
 
@@ -11,6 +11,11 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'streamhub-secrets-'));
   path = join(dir, '.streamhub', 'secrets.json');
 });
+
+async function writeRaw(content: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, content);
+}
 
 const twitch = { accessToken: 'a', refreshToken: 'r', userId: '1', login: 'yatf' };
 
@@ -64,5 +69,14 @@ describe('SecretsStore', () => {
     await again.load();
     expect(again.get()).toEqual({});
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('.corrupt-'));
+  });
+  it.each(['null', '[]', '42', '"text"'])('moves a non-object file (%s) aside and starts empty', async (content) => {
+    await writeRaw(content);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = new SecretsStore(path);
+    await store.load();
+    expect(store.get()).toEqual({});
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('.corrupt-'));
+    await expect(stat(path)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

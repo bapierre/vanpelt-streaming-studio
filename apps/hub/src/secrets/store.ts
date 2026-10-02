@@ -12,6 +12,10 @@ export type YouTubeSecrets = {
 };
 export type Secrets = { twitch?: TwitchSecrets; youtube?: YouTubeSecrets };
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /** Local secrets file: owner-only permissions, atomic replace, serialized writes. Never log its contents. */
 export class SecretsStore {
   private data: Secrets = {};
@@ -30,9 +34,15 @@ export class SecretsStore {
       }
       throw err;
     }
+    let parsed: unknown;
     try {
-      this.data = JSON.parse(text) as Secrets;
+      parsed = JSON.parse(text);
     } catch {
+      parsed = undefined;
+    }
+    if (isPlainObject(parsed)) {
+      this.data = parsed as Secrets;
+    } else {
       const backup = `${this.path}.corrupt-${Date.now()}`;
       await rename(this.path, backup);
       console.warn(`[secrets] unreadable secrets file moved to ${backup}; starting empty`);
