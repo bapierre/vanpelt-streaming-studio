@@ -15,7 +15,10 @@ export class ConnectorManager {
   restart(platform: Platform) {
     const c = this.byPlatform.get(platform);
     if (!c) return;
-    void c.stop().then(() => this.safeStart(c));
+    void c
+      .stop()
+      .then(() => this.safeStart(c))
+      .catch((err) => console.error('[connectors] restart failed', err));
   }
 
   async halt(platform: Platform) {

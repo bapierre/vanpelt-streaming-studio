@@ -28,6 +28,8 @@ type Options = {
 /** Device Code Grant Flow for a Public client (no secret). See docs/connectors/twitch.md §2. */
 export class TwitchAuth {
   private refreshing: Promise<TwitchSecrets> | null = null;
+  /** Bumped by clear(); in-flight sign-ins and refreshes started earlier must not write tokens back. */
+  private generation = 0;
   private readonly fetchFn: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => number;
@@ -62,6 +64,7 @@ export class TwitchAuth {
   }
 
   async pollDeviceFlow(code: DeviceCode, signal?: AbortSignal): Promise<TwitchSecrets> {
+    const generation = this.generation;
     while (this.now() < code.expiresAt) {
       if (signal?.aborted) throw new TwitchAuthError('sign-in cancelled');
       await this.sleep(code.intervalMs);
@@ -73,7 +76,7 @@ export class TwitchAuth {
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
       });
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      if (res.ok) return this.saveTokens(String(body.access_token), String(body.refresh_token));
+      if (res.ok) return this.saveTokens(String(body.access_token), String(body.refresh_token), generation);
       if (body.message === 'authorization_pending') continue;
       throw new TwitchAuthError(`Twitch rejected the sign-in: ${String(body.message ?? res.status)}`);
     }
@@ -120,6 +123,7 @@ export class TwitchAuth {
   }
 
   async clear(): Promise<void> {
+    this.generation++;
     await this.opts.store.update((s) => {
       const rest = { ...s };
       delete rest.twitch;
@@ -130,6 +134,7 @@ export class TwitchAuth {
   private async doRefresh(): Promise<TwitchSecrets> {
     const t = this.tokens();
     if (!t) throw new TwitchAuthError('Twitch is not connected');
+    const generation = this.generation;
     const res = await this.post('/token', {
       grant_type: 'refresh_token',
       refresh_token: t.refreshToken,
@@ -142,7 +147,7 @@ export class TwitchAuth {
     const b = (await res.json()) as { access_token: string; refresh_token: string };
     let next: TwitchSecrets | undefined;
     await this.opts.store.update((s) => {
-      if (!s.twitch) return s; // disconnected while the refresh was in flight
+      if (generation !== this.generation || !s.twitch) return s; // disconnected (or re-signed-in) while the refresh was in flight
       next = { ...s.twitch, accessToken: b.access_token, refreshToken: b.refresh_token };
       return { ...s, twitch: next };
     });
@@ -150,11 +155,14 @@ export class TwitchAuth {
     return next;
   }
 
-  private async saveTokens(accessToken: string, refreshToken: string): Promise<TwitchSecrets> {
+  private async saveTokens(accessToken: string, refreshToken: string, generation: number): Promise<TwitchSecrets> {
     const who = await this.whoAmI(accessToken);
     if (!who) throw new TwitchAuthError('Twitch returned a token that does not validate');
     const tokens = { accessToken, refreshToken, ...who };
-    await this.opts.store.update((s) => ({ ...s, twitch: tokens }));
+    await this.opts.store.update((s) => {
+      if (generation !== this.generation) throw new TwitchAuthError('sign-in cancelled');
+      return { ...s, twitch: tokens };
+    });
     return tokens;
   }
 

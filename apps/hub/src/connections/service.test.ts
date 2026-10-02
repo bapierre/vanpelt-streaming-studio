@@ -115,6 +115,7 @@ describe('ConnectionsService', () => {
 
   it('runs the YouTube sign-in through the callback', async () => {
     youtube.clientConfigured!.mockReturnValue(true);
+    youtube.connected!.mockReturnValue(true);
     service.start();
     cmd('connections.cmd.connect', { platform: 'youtube' });
     await settle();
@@ -147,5 +148,90 @@ describe('ConnectionsService', () => {
     cmd('connections.cmd.connect', { platform: 'kick' });
     await settle();
     expect(states('kick').at(-1)).toMatchObject({ state: 'error', detail: 'Kick arrives with the relay (M3).' });
+  });
+
+  it('disconnect during startDeviceFlow leaves the state disconnected', async () => {
+    let resolveStart!: (v: unknown) => void;
+    twitch.startDeviceFlow.mockReturnValue(new Promise((r) => (resolveStart = r)));
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    cmd('connections.cmd.disconnect', { platform: 'twitch' });
+    await settle();
+    resolveStart({ deviceCode: 'd', userCode: 'STALE', verificationUri: 'https://x', intervalMs: 1, expiresAt: 1e15 });
+    await settle();
+    expect(states('twitch').at(-1)).toMatchObject({ state: 'disconnected' });
+    expect(states('twitch').some((s) => (s as { state: string }).state === 'pending')).toBe(false);
+    expect(twitch.pollDeviceFlow).not.toHaveBeenCalled();
+  });
+
+  it('disconnect while the poll resolves does not publish connected or restart', async () => {
+    let resolvePoll!: (v: unknown) => void;
+    twitch.pollDeviceFlow.mockReturnValue(new Promise((r) => (resolvePoll = r)));
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    cmd('connections.cmd.disconnect', { platform: 'twitch' });
+    await settle();
+    resolvePoll({ accessToken: 'a', refreshToken: 'r', userId: '1', login: 'yatf' });
+    await settle();
+    expect(states('twitch').at(-1)).toMatchObject({ state: 'disconnected' });
+    expect(states('twitch').some((s) => (s as { state: string }).state === 'connected')).toBe(false);
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it('a second connect supersedes the first flow', async () => {
+    const mk = (userCode: string) => ({ deviceCode: userCode, userCode, verificationUri: `https://x/${userCode}`, intervalMs: 1, expiresAt: 1e15 });
+    let resolveFirst!: (v: unknown) => void;
+    twitch.startDeviceFlow.mockReturnValueOnce(new Promise((r) => (resolveFirst = r))).mockResolvedValueOnce(mk('SECOND'));
+    twitch.pollDeviceFlow.mockReturnValue(new Promise(() => {}));
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    resolveFirst(mk('FIRST'));
+    await settle();
+    expect(states('twitch').at(-1)).toMatchObject({ state: 'pending', userCode: 'SECOND' });
+  });
+
+  it('survives halt rejecting during setYoutubeClient', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    halt.mockRejectedValueOnce(new Error('stop failed'));
+    service.start();
+    cmd('connections.cmd.setYoutubeClient', { clientId: 'cid', clientSecret: 's' });
+    await settle();
+    cmd('connections.cmd.connect', { platform: 'kick' });
+    await settle();
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(states('kick').at(-1)).toMatchObject({ state: 'error' });
+  });
+
+  it('survives setClient rejecting', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    youtube.setClient!.mockRejectedValueOnce(new Error('disk full'));
+    service.start();
+    cmd('connections.cmd.setYoutubeClient', { clientId: 'cid', clientSecret: 's' });
+    await settle();
+    cmd('connections.cmd.connect', { platform: 'kick' });
+    await settle();
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(states('kick').at(-1)).toMatchObject({ state: 'error' });
+  });
+
+  it('does not publish connected or restart when YouTube was disconnected mid sign-in', async () => {
+    youtube.clientConfigured!.mockReturnValue(true);
+    youtube.connected!.mockReturnValue(false);
+    service.start();
+    await service.handleYouTubeCallback({ code: 'c', state: 's' });
+    expect(states('youtube').some((s) => (s as { state: string }).state === 'connected')).toBe(false);
+    expect(states('youtube').at(-1)).toMatchObject({ state: 'disconnected' });
+    expect(restart).not.toHaveBeenCalled();
   });
 });

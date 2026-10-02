@@ -44,6 +44,11 @@ export class ConnectionsService {
       await youtube.completeAuth({ code: query.code, state: query.state, error: query.error });
       const title = await this.deps.youtubeApi.myChannelTitle(await youtube.accessToken()).catch(() => undefined);
       await youtube.setAccount(title);
+      if (!youtube.connected()) {
+        // Disconnected while the sign-in was finishing: the disconnect wins.
+        this.state(this.youtubeIdle());
+        return 'YouTube was disconnected before sign-in finished.';
+      }
       this.state({ platform: 'youtube', state: 'connected', clientConfigured: true, ...(title ? { account: title } : {}) });
       this.deps.restart('youtube');
       return 'YouTube is connected. You can close this tab and go back to streamhub.';
@@ -88,8 +93,10 @@ export class ConnectionsService {
     this.twitchAbort = abort;
     try {
       const code = await twitch.startDeviceFlow();
+      if (abort.signal.aborted) return;
       this.state({ platform: 'twitch', state: 'pending', userCode: code.userCode, verificationUri: code.verificationUri });
       const tokens = await twitch.pollDeviceFlow(code, abort.signal);
+      if (abort.signal.aborted) return;
       this.state({ platform: 'twitch', state: 'connected', account: tokens.login });
       this.deps.restart('twitch');
     } catch (err) {
@@ -107,9 +114,9 @@ export class ConnectionsService {
 
   private async disconnect(platform: Platform) {
     if (platform === 'kick') return;
+    if (platform === 'twitch') this.twitchAbort?.abort();
     await this.deps.halt(platform);
     if (platform === 'twitch') {
-      this.twitchAbort?.abort();
       await this.deps.twitch?.clear();
       return this.state({ platform: 'twitch', state: 'disconnected', ...(this.deps.twitch ? {} : { detail: TWITCH_SETUP }) });
     }

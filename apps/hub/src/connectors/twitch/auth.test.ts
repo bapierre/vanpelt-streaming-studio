@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { SecretsStore } from '../../secrets/store';
 import { fakeFetch, json } from '../../testing/http';
+import { settle } from '../../testing/timer';
 import { TwitchAuth, TwitchAuthError, type DeviceCode } from './auth';
 
 let store: SecretsStore;
@@ -73,6 +74,27 @@ describe('TwitchAuth device flow', () => {
     abort.abort();
     const auth = new TwitchAuth({ clientId: 'cid', store, fetchFn, sleep, now: () => 0 });
     await expect(auth.pollDeviceFlow(code, abort.signal)).rejects.toBeInstanceOf(TwitchAuthError);
+  });
+
+  it('does not store tokens when cleared while the /token request is in flight', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const fetchFn = fakeFetch(async ({ url }) => {
+      if (url.endsWith('/validate')) return validateOk();
+      await gate;
+      return json(200, { access_token: 'at', refresh_token: 'rt', expires_in: 14000, scope: [], token_type: 'bearer' });
+    });
+    const auth = new TwitchAuth({ clientId: 'cid', store, fetchFn, sleep, now: () => 0 });
+    const poll = auth.pollDeviceFlow(code);
+    const outcome = poll.then(
+      () => 'resolved',
+      (e: unknown) => (e instanceof TwitchAuthError ? e.message : 'other'),
+    );
+    await settle();
+    await auth.clear();
+    release();
+    expect(await outcome).toBe('sign-in cancelled');
+    expect(store.get().twitch).toBeUndefined();
   });
 });
 

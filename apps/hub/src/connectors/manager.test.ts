@@ -33,4 +33,18 @@ describe('ConnectorManager', () => {
     m.restart('twitch');
     await expect(m.halt('kick')).resolves.toBeUndefined();
   });
+
+  it('logs instead of rejecting when stop fails during a restart', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const a = fake('twitch');
+    a.stop.mockRejectedValue(new Error('stop failed'));
+    new ConnectorManager([a]).restart('twitch');
+    await vi.waitFor(() => expect(log).toHaveBeenCalledWith('[connectors] restart failed', expect.any(Error)));
+    await new Promise((r) => setImmediate(r));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(a.start).not.toHaveBeenCalled();
+  });
 });
