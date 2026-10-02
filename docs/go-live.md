@@ -10,4 +10,8 @@ First time (and after changing any key), do a private test:
 2. Dashboard → Start stream → confirm. Within ~10 s every multi-rtmp target shows green and each platform shows the stream.
 3. Dashboard → Stop stream → confirm. Every target stops.
 
-(Chat checks are added here in M2 and M3.)
+Chat:
+1. Dashboard → Connections: Twitch and YouTube show **connected**.
+2. Status bar: `twitch: live` once connected; `youtube: live` once your broadcast is live (it says `offline` before that).
+3. Send a test message from each platform: both appear in the Chat panel within ~2 s, tagged Twitch / YouTube.
+4. Delete a Twitch message as moderator: it disappears from the dashboard.

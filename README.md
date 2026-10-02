@@ -6,7 +6,8 @@ Open-source, local-first control hub for live shows. It sits next to OBS: OBS en
 1. Node 20+ and pnpm (`corepack enable`).
 2. `pnpm install`
 3. `cp .env.example .env` and fill `OBS_WS_PASSWORD` (OBS → Tools → WebSocket Server Settings → Enable, Show Connect Info).
-4. Multistreaming: follow `docs/multistream.md`.
+4. Connect chat: `docs/setup/twitch.md` and `docs/setup/youtube.md` (then Dashboard → Connections).
+5. Multistreaming: follow `docs/multistream.md`.
 
 ## Run
 - Development: `pnpm dev`, then open http://127.0.0.1:5173

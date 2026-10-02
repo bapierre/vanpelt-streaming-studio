@@ -37,8 +37,8 @@ Reconnect with exponential backoff (1s → 60s cap, jitter).
 
 | Platform | Approach | Notes |
 |---|---|---|
-| Twitch | EventSub over WebSocket, hub-direct | Spike first (M2). |
-| YouTube | Data API v3 live chat, hub-direct | Quota math in the spike (M2). |
+| Twitch | EventSub over WebSocket, hub-direct | EventSub WS + Device Code Flow (docs/setup/twitch.md) |
+| YouTube | Data API v3 live chat, hub-direct | streamList gRPC, polling fallback; BYO Google project (docs/setup/youtube.md) |
 | Kick | Official webhooks via the **relay** (`apps/relay`, M3) | Opt-in unofficial Pusher fallback. |
 | X | Video only (RTMP via multi-rtmp). Chat deferred: Enterprise/approval-only API, see `docs/connectors/x.md`. | |
 

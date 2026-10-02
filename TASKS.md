@@ -3,7 +3,7 @@
 The approved design is `docs/superpowers/specs/2026-10-01-streamhub-base-design.md` (§8 has the milestones). Detailed plans live in `docs/superpowers/plans/`.
 
 - [x] M0 Skeleton + M1 Bus, OBS, multistream, dashboard (`plans/2026-10-01-streamhub-m0-m1-foundation.md`); code done, go-live acceptance with real OBS pending
-- [ ] M2 Direct chat: Twitch + YouTube (spikes first)
+- [x] M2 Direct chat: Twitch + YouTube (`plans/2026-10-01-streamhub-m2-chat.md`); live acceptance pending
 - [ ] M3 Relay + Kick
 - [ ] M4 Module host + settings
 
