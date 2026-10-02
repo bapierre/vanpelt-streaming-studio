@@ -1,5 +1,5 @@
 import { monotonicFactory } from 'ulid';
-import { topicMatches, validatePayload, type Envelope } from '@streamhub/shared';
+import { topicMatches, validatePayload, type ChatMessage, type Envelope } from '@streamhub/shared';
 
 export type PublishInput = { type: string; payload: unknown; source: string };
 export type PublishResult = { ok: true; event: Envelope } | { ok: false; error: string };
@@ -55,6 +55,7 @@ export class Bus {
       if (list.length > limit) list.shift();
       this.histories.set(event.type, list);
     }
+    this.applyModeration(event);
 
     for (const sub of [...this.subs]) {
       if (!topicMatches(sub.topics, event.type)) continue;
@@ -65,6 +66,25 @@ export class Bus {
       }
     }
     return { ok: true, event };
+  }
+
+  /** Keep chat history consistent with deletions and clears, so a reload does not bring removed messages back. */
+  private applyModeration(event: Envelope): void {
+    let drop: ((m: ChatMessage) => boolean) | null = null;
+    if (event.type === 'chat.deleted') {
+      const { id } = event.payload as { id: string };
+      drop = (m) => m.id === id;
+    } else if (event.type === 'chat.cleared') {
+      const { platform, authorId } = event.payload as { platform: string; authorId?: string };
+      drop = (m) => m.platform === platform && (authorId === undefined || m.author.id === authorId);
+    }
+    const list = this.histories.get('chat.message');
+    if (!drop || !list) return;
+    const remove = drop;
+    this.histories.set(
+      'chat.message',
+      list.filter((e) => !remove(e.payload as ChatMessage)),
+    );
   }
 
   subscribe(topics: string[], handler: Handler): () => void {

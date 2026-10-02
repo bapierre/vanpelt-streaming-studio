@@ -96,4 +96,36 @@ describe('Bus', () => {
       { platform: 'twitch', state: 'connected', account: 'yatf' },
     ]);
   });
+  const msg = (id: string, platform: 'twitch' | 'youtube', authorId: string) => ({
+    type: 'chat.message',
+    payload: chatMessage({ id, platform, author: { id: authorId, name: authorId, roles: [] } }),
+    source: 't',
+  });
+  const ids = (bus: Bus) => bus.history('chat.message', 500).map((e) => (e.payload as { id: string }).id);
+
+  it('removes a deleted message from chat history', () => {
+    const bus = new Bus();
+    bus.publish(msg('twitch:1', 'twitch', 'u1'));
+    bus.publish(msg('twitch:2', 'twitch', 'u1'));
+    bus.publish({ type: 'chat.deleted', payload: { id: 'twitch:1' }, source: 't' });
+    expect(ids(bus)).toEqual(['twitch:2']);
+  });
+
+  it('removes one user\'s messages on a per-user clear', () => {
+    const bus = new Bus();
+    bus.publish(msg('twitch:1', 'twitch', 'u1'));
+    bus.publish(msg('twitch:2', 'twitch', 'u2'));
+    bus.publish(msg('youtube:3', 'youtube', 'u1'));
+    bus.publish({ type: 'chat.cleared', payload: { platform: 'twitch', authorId: 'u1' }, source: 't' });
+    expect(ids(bus)).toEqual(['twitch:2', 'youtube:3']);
+  });
+
+  it('removes a whole platform on a clear and keeps other platforms', () => {
+    const bus = new Bus();
+    bus.publish(msg('twitch:1', 'twitch', 'u1'));
+    bus.publish(msg('youtube:2', 'youtube', 'u2'));
+    bus.publish(msg('twitch:3', 'twitch', 'u2'));
+    bus.publish({ type: 'chat.cleared', payload: { platform: 'twitch' }, source: 't' });
+    expect(ids(bus)).toEqual(['youtube:2']);
+  });
 });
