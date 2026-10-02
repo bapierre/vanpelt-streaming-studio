@@ -110,6 +110,6 @@ Hub → client: envelopes, plus
 - `{ "op": "error", "code": "bad_json"|"bad_op"|"bad_payload"|"forbidden", "message": string }`; the connection stays open.
 - `{ "op": "history-result", "reqId": string, "events": Envelope[] }`
 
-**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection` and `platform.status` (one per platform) that match the new topics, oldest first. A reloaded dashboard is correct at once.
+**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection`, `platform.status` (one per platform) and `connections.state` (one per platform) that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
 **Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*` and `connections.cmd.*`.
