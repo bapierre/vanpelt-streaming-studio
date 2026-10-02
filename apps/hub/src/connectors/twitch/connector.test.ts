@@ -10,6 +10,7 @@ import messageDelete from './fixtures/message-delete.json';
 class FakeSocket implements SocketLike {
   onmessage: ((ev: { data: unknown }) => void) | null = null;
   onclose: ((ev: { code: number }) => void) | null = null;
+  onerror: ((ev: unknown) => void) | null = null;
   closed = false;
   constructor(readonly url: string) {}
   close() {
@@ -218,5 +219,94 @@ describe('TwitchConnector', () => {
     sockets[0]!.drop(1006);
     expect(timer.queue).toEqual([]);
     expect(lastStatus()).toMatchObject({ status: 'disconnected' });
+  });
+
+  it('recovers when the handover socket fails before its welcome', async () => {
+    connector.start();
+    sockets[0]!.frame(welcome('S1'));
+    await settle();
+    sockets[0]!.frame({
+      metadata: { message_id: 'r1', message_type: 'session_reconnect', message_timestamp: '2022-11-18T09:10:11Z' },
+      payload: { session: { id: 'S1', status: 'reconnecting', keepalive_timeout_seconds: null, reconnect_url: 'wss://eventsub.wss.twitch.tv?reconnect=1', connected_at: '2022-11-16T10:11:12Z' } },
+    });
+    timer.fire(15_000);
+    timer.fire(1000);
+    sockets[2]!.frame(welcome('S3'));
+    await settle();
+    expect(helix.mock.calls.filter(([, init]) => (init as RequestInit).body!.toString().includes('S3'))).toHaveLength(4);
+    expect(lastStatus()).toMatchObject({ status: 'live' });
+    expect(sockets[0]!.closed).toBe(true);
+  });
+
+  it('never throws from socket callbacks', async () => {
+    connector.start();
+    sockets[0]!.frame(welcome());
+    await settle();
+    expect(() => sockets[0]!.onmessage?.({ data: 'null' })).not.toThrow();
+    expect(() =>
+      sockets[0]!.frame({
+        metadata: { message_id: 'bad', message_type: 'notification', message_timestamp: '2023-01-01T00:00:00Z', subscription_type: 'channel.chat.message' },
+        payload: { event: {} },
+      }),
+    ).not.toThrow();
+    sockets[0]!.frame(chatMessage);
+    expect(ofType('chat.message')).toHaveLength(1);
+  });
+
+  it('keeps retrying when opening a socket throws', async () => {
+    let fail = false;
+    const c = new TwitchConnector({
+      bus,
+      auth: { tokens: () => tokens, helix, validate } as never,
+      createSocket: (url) => {
+        if (fail) throw new Error('boom');
+        const s = new FakeSocket(url);
+        sockets.push(s);
+        return s;
+      },
+      timer,
+      rand: () => 1,
+    });
+    c.start();
+    sockets[0]!.frame(welcome());
+    await settle();
+    fail = true;
+    sockets[0]!.drop(1006);
+    timer.fire(1000);
+    expect(timer.has(2000)).toBe(true);
+    await c.stop();
+  });
+
+  it('start is idempotent and leaves one open socket', () => {
+    connector.start();
+    connector.start();
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]!.closed).toBe(true);
+    expect(sockets[1]!.closed).toBe(false);
+  });
+
+  it('ignores a stale validation after stop and restart', async () => {
+    let resolve!: (v: boolean) => void;
+    validate.mockImplementationOnce(() => new Promise<boolean>((r) => (resolve = r)));
+    connector.start();
+    await connector.stop();
+    connector.start();
+    await settle();
+    resolve(true);
+    await settle();
+    expect(timer.queue.filter((e) => e.ms === 3_600_000)).toHaveLength(1);
+  });
+
+  it('installs an error handler so socket errors cannot crash the process', () => {
+    connector.start();
+    expect(sockets[0]!.onerror).toBeTypeOf('function');
+  });
+
+  it('times out a socket that never sends a welcome', () => {
+    connector.start();
+    timer.fire(15_000);
+    expect(sockets[0]!.closed).toBe(true);
+    expect(lastStatus()).toMatchObject({ status: 'connecting', detail: expect.stringContaining('keepalive') });
+    expect(timer.has(1000)).toBe(true);
   });
 });

@@ -54,6 +54,7 @@ export class TwitchConnector implements Connector {
   private watchdog: unknown = null;
   private validation: unknown = null;
   private keepaliveMs = 10_000;
+  private generation = 0;
   private readonly seen = new Set<string>();
   private readonly timer: Timer;
   private readonly rand: () => number;
@@ -64,6 +65,7 @@ export class TwitchConnector implements Connector {
   }
 
   start() {
+    this.shutdown();
     this.stopped = false;
     if (!this.opts.auth.tokens()) {
       this.status('disconnected', 'Connect Twitch on the Connections page');
@@ -80,6 +82,7 @@ export class TwitchConnector implements Connector {
 
   private shutdown() {
     this.stopped = true;
+    this.generation++;
     for (const handle of [this.retry, this.watchdog, this.validation]) if (handle !== null) this.timer.clear(handle);
     this.retry = this.watchdog = this.validation = null;
     const sockets = [this.socket, this.handover];
@@ -93,15 +96,35 @@ export class TwitchConnector implements Connector {
   }
 
   private open(url: string, isHandover: boolean) {
-    if (!isHandover) this.status('connecting');
+    if (!isHandover) {
+      this.status('connecting');
+      this.closeHandover();
+    }
     const socket = this.opts.createSocket(url);
     if (isHandover) this.handover = this.socket;
     this.socket = socket;
     socket.onmessage = (ev) => this.onFrame(socket, String(ev.data));
     socket.onclose = (ev) => this.onSocketClosed(socket, ev.code);
+    // A close event follows an error and drives the reconnect; without a listener `ws` would throw.
+    socket.onerror = () => {};
+    if (!isHandover) this.armWatchdog();
+  }
+
+  private closeHandover() {
+    const h = this.handover;
+    this.handover = null;
+    h?.close(1000);
   }
 
   private onFrame(socket: SocketLike, text: string) {
+    try {
+      this.handleFrame(socket, text);
+    } catch (err) {
+      console.warn('[twitch] failed to handle frame:', describeError(err));
+    }
+  }
+
+  private handleFrame(socket: SocketLike, text: string) {
     if (socket !== this.socket && socket !== this.handover) return;
     let frame: Frame;
     try {
@@ -109,6 +132,7 @@ export class TwitchConnector implements Connector {
     } catch {
       return;
     }
+    if (!frame || typeof frame !== 'object') return;
     if (socket === this.socket) this.armWatchdog();
     switch (frame.metadata?.message_type) {
       case 'session_welcome':
@@ -214,6 +238,7 @@ export class TwitchConnector implements Connector {
     if (socket !== this.socket) return;
     this.socket = null;
     this.clearWatchdog();
+    this.closeHandover();
     if (this.stopped) return;
     this.status('connecting', `Twitch closed the connection (${code})`);
     this.scheduleReconnect();
@@ -223,6 +248,7 @@ export class TwitchConnector implements Connector {
     const s = this.socket;
     this.socket = null;
     this.clearWatchdog();
+    this.closeHandover();
     s?.close(1000);
   }
 
@@ -246,13 +272,20 @@ export class TwitchConnector implements Connector {
     if (this.stopped || this.retry !== null) return;
     this.retry = this.timer.set(() => {
       this.retry = null;
-      if (!this.stopped) this.open(this.opts.url ?? EVENTSUB_URL, false);
+      if (this.stopped) return;
+      try {
+        this.open(this.opts.url ?? EVENTSUB_URL, false);
+      } catch (err) {
+        console.warn('[twitch] failed to open socket:', describeError(err));
+        this.scheduleReconnect();
+      }
     }, backoffDelay(this.attempt++, this.rand));
   }
 
   private async checkToken() {
+    const generation = this.generation;
     const ok = await this.opts.auth.validate().catch(() => false);
-    if (this.stopped) return;
+    if (this.stopped || generation !== this.generation) return;
     if (!ok) {
       this.halt(`Twitch login expired. ${RECONNECT_HINT}`);
       return;

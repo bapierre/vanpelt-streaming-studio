@@ -10,6 +10,7 @@ export interface Connector {
 export type SocketLike = {
   onmessage: ((ev: { data: unknown }) => void) | null;
   onclose: ((ev: { code: number }) => void) | null;
+  onerror?: ((ev: unknown) => void) | null;
   close(code?: number): void;
 };
 
