@@ -9,7 +9,9 @@ import {
 import type { Bus } from '../bus/bus';
 
 /** Event prefixes a dashboard client may publish. Modules get their own rules in M4. */
-export const DASHBOARD_PUBLISHABLE = ['obs.cmd.', 'show.'];
+export const DASHBOARD_PUBLISHABLE = ['obs.cmd.', 'show.', 'connections.cmd.'];
+/** Events that may carry secrets: handled inside the hub, never sent to any client. */
+export const NEVER_FORWARDED = ['connections.cmd.'];
 export const MAX_MESSAGE_BYTES = 64 * 1024;
 
 export type WsOptions = { bus: Bus; allowedOrigins: string[] };
@@ -45,6 +47,7 @@ function handleClient(ws: WebSocket, bus: Bus) {
   const fail = (code: ErrorCode, message: string) => send({ op: 'error', code, message });
 
   const unsubscribe = bus.subscribe(['*'], (event) => {
+    if (NEVER_FORWARDED.some((p) => event.type.startsWith(p))) return;
     if (topicMatches(topics, event.type)) send(event);
   });
 

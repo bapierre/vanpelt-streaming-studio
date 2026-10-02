@@ -15,9 +15,13 @@ const RETAINED_TYPES = new Set([
   'relay.connection',
 ]);
 
+const PER_PLATFORM_RETAINED = new Set(['platform.status', 'connections.state']);
+
 function retainKey(e: Envelope): string | null {
   if (RETAINED_TYPES.has(e.type)) return e.type;
-  if (e.type === 'platform.status') return `platform.status:${(e.payload as { platform: string }).platform}`;
+  if (PER_PLATFORM_RETAINED.has(e.type)) {
+    return `${e.type}:${(e.payload as { platform: string }).platform}`;
+  }
   return null;
 }
 

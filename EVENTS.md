@@ -50,6 +50,7 @@ type ChatMessage = {
 |---|---|
 | `chat.message` | `ChatMessage` |
 | `chat.deleted` | `{ id: string }` (normalized id) |
+| `chat.cleared` | `{ platform: Platform; authorId?: string }` (whole chat cleared, or one user's messages removed) |
 | `relay.connection` | `{ connected: boolean; detail?: string }` |
 | `platform.status` | `{ platform: Platform; status: 'disconnected'\|'connecting'\|'live'\|'offline'\|'error'; detail?: string }` |
 
@@ -73,6 +74,28 @@ type ChatMessage = {
 
 Transition and sequence events (`show.transition.*`, `show.sequence.*`) return with their modules after the base; they are not in packages/shared yet.
 
+## Connections
+```ts
+type ConnectionState = {
+  platform: Platform;
+  state: 'disconnected' | 'pending' | 'connected' | 'error';
+  account?: string;          // login / channel title when connected
+  detail?: string;           // human-readable error or hint
+  userCode?: string;         // Twitch device code to type at verificationUri
+  verificationUri?: string;  // Twitch activation page
+  authUrl?: string;          // YouTube: Google sign-in URL to open
+  clientConfigured?: boolean;// YouTube: a BYO OAuth client is saved
+};
+```
+| type | payload |
+|---|---|
+| `connections.state` | `ConnectionState` (retained per platform) |
+| `connections.cmd.connect` | `{ platform: Platform }` |
+| `connections.cmd.disconnect` | `{ platform: Platform }` |
+| `connections.cmd.setYoutubeClient` | `{ clientId: string; clientSecret: string }` |
+
+`connections.cmd.*` events can carry secrets: the hub handles them internally and **never forwards them to WebSocket clients**. They are not kept in history.
+
 ## Module events
 Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`.
 
@@ -89,4 +112,4 @@ Hub → client: envelopes, plus
 
 **Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection` and `platform.status` (one per platform) that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
-**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*` and `show.*`.
+**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*` and `connections.cmd.*`.

@@ -156,6 +156,28 @@ describe('ops', () => {
     c.send('x'.repeat(MAX_MESSAGE_BYTES + 1));
     expect(await closed).toBe(1009);
   });
+
+  it('lets dashboards send connection commands', async () => {
+    const seen: unknown[] = [];
+    bus.subscribe(['connections.cmd.'], (e) => seen.push(e.payload));
+    const c = await open(ORIGIN);
+    c.send({ op: 'publish', event: { type: 'connections.cmd.connect', payload: { platform: 'twitch' } } });
+    await sync(c);
+    expect(seen).toEqual([{ platform: 'twitch' }]);
+  });
+
+  it('never forwards connections commands to clients', async () => {
+    const watcher = await open(ORIGIN);
+    watcher.send({ op: 'subscribe', topics: ['*'] });
+    await sync(watcher);
+    const sender = await open(ORIGIN);
+    sender.send({
+      op: 'publish',
+      event: { type: 'connections.cmd.setYoutubeClient', payload: { clientId: 'id', clientSecret: 'TOPSECRET' } },
+    });
+    await sync(sender);
+    await sync(watcher); // would receive the command first if it were forwarded
+  });
 });
 
 describe('robustness', () => {

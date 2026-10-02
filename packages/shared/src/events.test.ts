@@ -37,6 +37,32 @@ describe('validatePayload', () => {
   });
 });
 
+describe('M2 events', () => {
+  it('accepts chat.cleared with and without an author', () => {
+    expect(validatePayload('chat.cleared', { platform: 'twitch' }).ok).toBe(true);
+    expect(validatePayload('chat.cleared', { platform: 'youtube', authorId: 'UC1' }).ok).toBe(true);
+  });
+  it('accepts a pending Twitch connection state', () => {
+    const r = validatePayload('connections.state', {
+      platform: 'twitch',
+      state: 'pending',
+      userCode: 'ABCDEFGH',
+      verificationUri: 'https://www.twitch.tv/activate?public=true&device-code=ABCDEFGH',
+    });
+    expect(r.ok).toBe(true);
+  });
+  it('trims and requires the YouTube client credentials', () => {
+    expect(validatePayload('connections.cmd.setYoutubeClient', { clientId: '  ', clientSecret: 's' }).ok).toBe(false);
+    expect(validatePayload('connections.cmd.setYoutubeClient', { clientId: ' id ', clientSecret: ' s ' })).toEqual({
+      ok: true,
+      payload: { clientId: 'id', clientSecret: 's' },
+    });
+  });
+  it('rejects connecting an unknown platform', () => {
+    expect(validatePayload('connections.cmd.connect', { platform: 'x' }).ok).toBe(false);
+  });
+});
+
 describe('ClientOpSchema', () => {
   it('defaults history limit to 50', () => {
     const op = ClientOpSchema.parse({ op: 'history', reqId: 'r1', topic: 'chat.message' });

@@ -84,4 +84,16 @@ describe('Bus', () => {
     ]);
     expect(bus.retainedFor(['chat.'])).toEqual([]);
   });
+
+  it('retains connection state per platform', () => {
+    const bus = new Bus();
+    bus.publish({ type: 'connections.state', payload: { platform: 'twitch', state: 'pending' }, source: 'hub' });
+    bus.publish({ type: 'connections.state', payload: { platform: 'youtube', state: 'disconnected' }, source: 'hub' });
+    bus.publish({ type: 'connections.state', payload: { platform: 'twitch', state: 'connected', account: 'yatf' }, source: 'hub' });
+    const states = bus.retainedFor(['connections.']).map((e) => e.payload);
+    expect(states).toEqual([
+      { platform: 'youtube', state: 'disconnected' },
+      { platform: 'twitch', state: 'connected', account: 'yatf' },
+    ]);
+  });
 });

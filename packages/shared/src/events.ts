@@ -36,12 +36,25 @@ export type ConnectorStatus = z.infer<typeof ConnectorStatusSchema>;
 export const StreamStateSchema = z.enum(['starting', 'live', 'stopping', 'stopped']);
 export type StreamState = z.infer<typeof StreamStateSchema>;
 
+export const ConnectionStateSchema = z.object({
+  platform: PlatformSchema,
+  state: z.enum(['disconnected', 'pending', 'connected', 'error']),
+  account: z.string().optional(),
+  detail: z.string().optional(),
+  userCode: z.string().optional(),
+  verificationUri: z.string().optional(),
+  authUrl: z.string().optional(),
+  clientConfigured: z.boolean().optional(),
+});
+export type ConnectionState = z.infer<typeof ConnectionStateSchema>;
+
 const Empty = z.object({}).strict();
 const Connection = z.object({ connected: z.boolean(), detail: z.string().optional() });
 
 export const EventSchemas = {
   'chat.message': ChatMessageSchema,
   'chat.deleted': z.object({ id: z.string() }),
+  'chat.cleared': z.object({ platform: PlatformSchema, authorId: z.string().optional() }),
   'platform.status': z.object({
     platform: PlatformSchema,
     status: ConnectorStatusSchema,
@@ -62,6 +75,13 @@ export const EventSchemas = {
   }),
   'show.feature.set': z.object({ message: ChatMessageSchema }),
   'show.feature.clear': Empty,
+  'connections.state': ConnectionStateSchema,
+  'connections.cmd.connect': z.object({ platform: PlatformSchema }),
+  'connections.cmd.disconnect': z.object({ platform: PlatformSchema }),
+  'connections.cmd.setYoutubeClient': z.object({
+    clientId: z.string().trim().min(1),
+    clientSecret: z.string().trim().min(1),
+  }),
 } as const;
 
 export type KnownEventType = keyof typeof EventSchemas;
