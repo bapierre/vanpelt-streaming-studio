@@ -24,7 +24,11 @@ const clients: WebSocket[] = [];
 beforeEach(async () => {
   bus = new Bus();
   http = createServer();
-  attachWebSocket(http, { bus, allowedOrigins: [ORIGIN] });
+  attachWebSocket(http, {
+    bus,
+    allowedOrigins: [ORIGIN],
+    authorizeDriver: (id, token) => (id === 'camera-gopro' && token === 'good' ? ['gopro'] : null),
+  });
   await new Promise<void>((r) => http.listen(0, '127.0.0.1', r));
   port = (http.address() as AddressInfo).port;
 });
@@ -35,9 +39,9 @@ afterEach(async () => {
   await new Promise((r) => http.close(r));
 });
 
-function open(origin?: string): Promise<TestClient> {
+function open(origin?: string, query = ''): Promise<TestClient> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, origin ? { origin } : {});
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws${query}`, origin ? { origin } : {});
     clients.push(ws);
     const inbox: ServerMessage[] = [];
     const waiters: Array<(m: ServerMessage) => void> = [];
@@ -177,6 +181,55 @@ describe('ops', () => {
     });
     await sync(sender);
     await sync(watcher); // would receive the command first if it were forwarded
+  });
+});
+
+describe('camera drivers', () => {
+  const DRIVER = '?driver=camera-gopro&token=good';
+  const driverState = (id: string) => ({
+    op: 'publish',
+    event: { type: 'camera.driver.state', payload: { id, status: 'ready', controls: [] } },
+  });
+
+  it('rejects a bad token and any browser origin', async () => {
+    await expect(open(undefined, '?driver=camera-gopro&token=bad')).rejects.toThrow('HTTP 403');
+    await expect(open(ORIGIN, DRIVER)).rejects.toThrow('HTTP 403');
+  });
+
+  it('lets a driver publish state only for its own cameras', async () => {
+    const seen: unknown[] = [];
+    bus.subscribe(['camera.driver.state'], (e) => seen.push([e.source, (e.payload as { id: string }).id]));
+    const d = await open(undefined, DRIVER);
+    d.send(driverState('gopro'));
+    d.send(driverState('sony'));
+    expect(await d.next()).toMatchObject({ op: 'error', code: 'forbidden' });
+    d.send({ op: 'publish', event: { type: 'obs.cmd.stopStream', payload: {} } });
+    expect(await d.next()).toMatchObject({ op: 'error', code: 'forbidden' });
+    expect(seen).toEqual([['driver:camera-gopro', 'gopro']]);
+  });
+
+  it('delivers only its own commands to a driver and hides driver traffic from dashboards', async () => {
+    const d = await open(undefined, DRIVER);
+    d.send({ op: 'subscribe', topics: ['*'] });
+    await sync(d);
+    const dash = await open(ORIGIN);
+    dash.send({ op: 'subscribe', topics: ['*'] });
+    await sync(dash);
+    bus.publish({ type: 'obs.scene.changed', payload: { scene: 'X' }, source: 'obs' });
+    bus.publish({ type: 'camera.driver.cmd.set', payload: { id: 'sony', key: 'k', value: 1 }, source: 'hub' });
+    bus.publish({ type: 'camera.driver.cmd.set', payload: { id: 'gopro', key: 'k', value: 2 }, source: 'hub' });
+    expect(await d.next()).toMatchObject({ type: 'camera.driver.cmd.set', payload: { id: 'gopro', value: 2 } });
+    expect(await dash.next()).toMatchObject({ type: 'obs.scene.changed' });
+    await sync(dash); // a forwarded driver command would arrive before the sync reply
+  });
+
+  it('lets dashboards send camera commands', async () => {
+    const seen: unknown[] = [];
+    bus.subscribe(['camera.cmd.'], (e) => seen.push(e.payload));
+    const c = await open(ORIGIN);
+    c.send({ op: 'publish', event: { type: 'camera.cmd.take', payload: { id: 'gopro' } } });
+    await sync(c);
+    expect(seen).toEqual([{ id: 'gopro' }]);
   });
 });
 

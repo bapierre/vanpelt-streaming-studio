@@ -63,6 +63,35 @@ describe('M2 events', () => {
   });
 });
 
+describe('camera events', () => {
+  const driverState = {
+    id: 'gopro',
+    status: 'ready',
+    controls: [
+      { key: 'fov', label: 'Lens', kind: 'select', value: '0', options: [{ value: '0', label: 'Wide' }] },
+      { key: 'zoom', label: 'Zoom', kind: 'range', value: 0, min: 0, max: 100, step: 1 },
+    ],
+  };
+  it('accepts a driver state with select and range controls', () => {
+    expect(validatePayload('camera.driver.state', driverState).ok).toBe(true);
+  });
+  it('rejects driver controls that claim the obs. namespace', () => {
+    const r = validatePayload('camera.driver.state', {
+      ...driverState,
+      controls: [{ key: 'obs.brightness', label: 'B', kind: 'toggle', value: true }],
+    });
+    expect(r.ok).toBe(false);
+  });
+  it('rejects camera ids that are not slugs', () => {
+    expect(validatePayload('camera.cmd.take', { id: 'Go Pro' }).ok).toBe(false);
+    expect(validatePayload('camera.cmd.take', { id: 'gopro' }).ok).toBe(true);
+  });
+  it('accepts null as the value of an action', () => {
+    expect(validatePayload('camera.cmd.set', { id: 'sony', key: 'obs.reset', value: null }).ok).toBe(true);
+    expect(validatePayload('camera.cmd.set', { id: 'sony', key: 'obs.reset', value: {} }).ok).toBe(false);
+  });
+});
+
 describe('ClientOpSchema', () => {
   it('defaults history limit to 50', () => {
     const op = ClientOpSchema.parse({ op: 'history', reqId: 'r1', topic: 'chat.message' });

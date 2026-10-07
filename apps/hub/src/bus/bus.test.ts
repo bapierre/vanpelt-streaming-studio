@@ -96,6 +96,22 @@ describe('Bus', () => {
       { platform: 'twitch', state: 'connected', account: 'yatf' },
     ]);
   });
+  it('retains camera state per camera id', () => {
+    const bus = new Bus();
+    const cam = (id: string, status: string) => ({
+      type: 'camera.state',
+      payload: { id, name: id, driver: null, status, scene: id, onAir: false, controls: [] },
+      source: 'hub',
+    });
+    bus.publish(cam('gopro', 'connecting'));
+    bus.publish(cam('sony', 'ready'));
+    bus.publish(cam('gopro', 'streaming'));
+    const states = bus.retainedFor(['camera.state']).map((e) => e.payload as { id: string; status: string });
+    expect(states.map((s) => [s.id, s.status])).toEqual([
+      ['sony', 'ready'],
+      ['gopro', 'streaming'],
+    ]);
+  });
   const msg = (id: string, platform: 'twitch' | 'youtube', authorId: string) => ({
     type: 'chat.message',
     payload: chatMessage({ id, platform, author: { id: authorId, name: authorId, roles: [] } }),

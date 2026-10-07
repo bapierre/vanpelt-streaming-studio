@@ -96,6 +96,44 @@ type ConnectionState = {
 
 `connections.cmd.*` events can carry secrets: the hub handles them internally and **never forwards them to WebSocket clients**. They are not kept in history.
 
+## Cameras
+Each camera is configured in `.streamhub/cameras.json` and bound to one OBS scene and one OBS source. Device control comes from an optional **driver** (a camera module, see `docs/cameras/writing-a-driver.md`); OBS-side controls work for every camera.
+```ts
+type CameraControl =                       // drivers describe controls; the dashboard renders them
+  | { kind: 'select'; key; label; value: string; options: { value: string; label: string }[]; hint?; disabled? }
+  | { kind: 'range';  key; label; value: number; min: number; max: number; step: number; hint?; disabled? }
+  | { kind: 'toggle'; key; label; value: boolean; hint?; disabled? }
+  | { kind: 'action'; key; label; hint?; disabled? };       // a button; set it with value null
+// key: [a-zA-Z0-9_.-]+. Keys starting with `obs.` are the hub's OBS-side controls; drivers may not use them.
+// disabled: why the control can't be used right now.
+
+type CameraStatus = 'disconnected' | 'connecting' | 'ready' | 'streaming' | 'error';
+
+type CameraState = {
+  id: string;                // slug: [a-z0-9-]+
+  name: string;
+  driver: string | null;     // module id, or null for an OBS-only camera
+  status: CameraStatus;
+  detail?: string;           // device / driver problem
+  obsDetail?: string;        // the camera's OBS scene or source is missing or OBS is down
+  scene: string;             // OBS scene that "Take" switches to
+  onAir: boolean;            // that scene is the current program scene
+  telemetry?: { battery?: number; overheating?: boolean };
+  controls: CameraControl[]; // driver controls first, then OBS-side controls
+};
+```
+| type | payload |
+|---|---|
+| `camera.state` | `CameraState` (retained per camera id) |
+| `camera.cmd.take` | `{ id }` switch to the camera's scene |
+| `camera.cmd.set` | `{ id, key, value: string \| number \| boolean \| null }` change one control |
+| `camera.driver.state` | `{ id, status, detail?, telemetry?, controls, obsInput?: { kind, settings } }` (driver → hub) |
+| `camera.driver.cmd.set` | `{ id, key, value }` (hub → driver) |
+
+OBS-side control keys: `obs.brightness`, `obs.contrast`, `obs.saturation`, `obs.gamma` (a `streamhub color` Color Correction filter the hub manages on the source), `obs.mirror`, `obs.cropLeft|Right|Top|Bottom` (the source's transform in the camera scene), `obs.reset`, and `obs.createScene` (offered when the scene or source is missing and the driver supplied `obsInput`).
+
+`camera.driver.*` events are only exchanged between the hub and the driver that owns the camera. Drivers connect to `/ws?driver=<moduleId>&token=<token>` without an Origin header; the token is handed to the driver process by the hub at launch. A driver may publish only `camera.driver.state` for its own camera ids and receives only `camera.driver.cmd.set` for them.
+
 ## Module events
 Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`.
 
@@ -110,6 +148,6 @@ Hub → client: envelopes, plus
 - `{ "op": "error", "code": "bad_json"|"bad_op"|"bad_payload"|"forbidden", "message": string }`; the connection stays open.
 - `{ "op": "history-result", "reqId": string, "events": Envelope[] }`
 
-**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection`, `platform.status` (one per platform) and `connections.state` (one per platform) that match the new topics, oldest first. A reloaded dashboard is correct at once.
+**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection`, `platform.status` (one per platform), `connections.state` (one per platform) and `camera.state` (one per camera) that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
-**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*` and `connections.cmd.*`.
+**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*` and `camera.cmd.*`, and never receive `camera.driver.*`.

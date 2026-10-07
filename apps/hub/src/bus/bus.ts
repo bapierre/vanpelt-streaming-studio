@@ -15,13 +15,17 @@ const RETAINED_TYPES = new Set([
   'relay.connection',
 ]);
 
-const PER_PLATFORM_RETAINED = new Set(['platform.status', 'connections.state']);
+/** Retained once per value of the named payload field. */
+const KEYED_RETAINED: Record<string, string> = {
+  'platform.status': 'platform',
+  'connections.state': 'platform',
+  'camera.state': 'id',
+};
 
 function retainKey(e: Envelope): string | null {
   if (RETAINED_TYPES.has(e.type)) return e.type;
-  if (PER_PLATFORM_RETAINED.has(e.type)) {
-    return `${e.type}:${(e.payload as { platform: string }).platform}`;
-  }
+  const field = KEYED_RETAINED[e.type];
+  if (field) return `${e.type}:${String((e.payload as Record<string, unknown>)[field])}`;
   return null;
 }
 

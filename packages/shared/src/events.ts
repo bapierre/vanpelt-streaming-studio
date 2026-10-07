@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CameraDriverStateSchema, CameraIdSchema, CameraSetSchema, CameraStateSchema } from './cameras';
 
 export const PlatformSchema = z.enum(['twitch', 'youtube', 'kick']);
 export type Platform = z.infer<typeof PlatformSchema>;
@@ -82,6 +83,11 @@ export const EventSchemas = {
     clientId: z.string().trim().min(1),
     clientSecret: z.string().trim().min(1),
   }),
+  'camera.state': CameraStateSchema,
+  'camera.cmd.take': z.object({ id: CameraIdSchema }),
+  'camera.cmd.set': CameraSetSchema,
+  'camera.driver.state': CameraDriverStateSchema,
+  'camera.driver.cmd.set': CameraSetSchema,
 } as const;
 
 export type KnownEventType = keyof typeof EventSchemas;
