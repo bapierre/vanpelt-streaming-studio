@@ -120,6 +120,13 @@ A module is a static web bundle + manifest, served at `http://127.0.0.1:4747/m/<
 ### 8. Relay (`apps/relay`, M3)
 A hosted, self-hostable Cloudflare Worker that receives Kick webhooks and does Kick OAuth, and forwards events to the hub over a WebSocket the hub opens outbound. It is the only internet-facing component. Design: docs/superpowers/specs/2026-10-01-streamhub-base-design.md §4.3.
 
+### 9. Cameras (`apps/hub/src/cameras`, `modules/camera-*`)
+Video still flows camera → OBS; the hub only switches and tunes.
+- Cameras are listed in `.streamhub/cameras.json`, each bound to one OBS scene and the OBS source that shows it. `camera.cmd.take` switches OBS to that scene; `camera.state` (retained per camera) carries status, on-air, telemetry and controls.
+- **OBS-side controls** work for every camera, driverless included: a "streamhub color" color-correction filter (brightness, contrast, saturation, gamma), crop, mirror, reset, and "create scene" when the scene is missing.
+- **Device controls** come from a driver: a Node process in `modules/camera-<model>/` (manifest `"driver": { "entry": "src/main.ts" }`) built on `@streamhub/camera-sdk`. The hub spawns it with a minimal environment and a per-run token, it connects to `/ws?driver=<id>&token=<t>`, and it may only send and receive `camera.driver.*` for its own cameras. Drivers describe their controls (select, range, toggle, action), so the dashboard renders new models without changes. Crashed drivers restart with backoff; a missing driver shows the camera as "not installed" and OBS-side controls keep working.
+- Shipped: `camera-gopro` (HERO12 over USB, Open GoPro HTTP API). The Sony A6400 is OBS-only (no public control API). Guides: `docs/cameras/`.
+
 ## Config & secrets
 - `.env` (gitignored): `HUB_PORT`, `OBS_WS_URL`, `OBS_WS_PASSWORD`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_CHANNEL`, `YOUTUBE_API_KEY` / OAuth creds, `KICK_*`.
 - `config/` (committed, no secrets): sequences, platform colors, enabled connectors.
