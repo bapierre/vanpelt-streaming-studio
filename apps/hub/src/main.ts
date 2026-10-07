@@ -2,6 +2,9 @@ import { config as loadDotenv } from 'dotenv';
 import OBSWebSocket from 'obs-websocket-js';
 import { WebSocket } from 'ws';
 import { Bus } from './bus/bus';
+import { loadCameras } from './cameras/config';
+import { discoverDrivers, DriverHost } from './cameras/drivers';
+import { CameraService } from './cameras/service';
 import { loadConfig } from './config';
 import { ConnectionsService } from './connections/service';
 import { ConnectorManager } from './connectors/manager';
@@ -60,18 +63,35 @@ const connections = new ConnectionsService({
 });
 late.connections = connections;
 
+const obs = new ObsBridge({
+  bus,
+  client: new OBSWebSocket() as unknown as ObsClient,
+  url: cfg.obsUrl,
+  password: cfg.obsPassword,
+});
+
+const cameraConfigs = await loadCameras(paths.cameras);
+const drivers = await discoverDrivers(paths.modules);
+const cameras = new CameraService({
+  bus,
+  obs,
+  cameras: cameraConfigs,
+  installedDrivers: new Set(drivers.keys()),
+});
+const driverHost = new DriverHost({
+  drivers,
+  cameras: cameraConfigs,
+  hubUrl: `ws://${cfg.host}:${cfg.port}/ws`,
+  onExit: (id, detail) => cameras.driverExited(id, detail),
+});
+
 const app = await createServer({
   bus,
   port: cfg.port,
   dev: cfg.dev,
   dashboardDir: paths.dashboard,
   youtubeCallback: (q) => connections.handleYouTubeCallback(q),
-});
-const obs = new ObsBridge({
-  bus,
-  client: new OBSWebSocket() as unknown as ObsClient,
-  url: cfg.obsUrl,
-  password: cfg.obsPassword,
+  authorizeDriver: (id, token) => driverHost.authorize(id, token),
 });
 
 try {
@@ -83,16 +103,19 @@ try {
   }
   throw err;
 }
+cameras.start();
 obs.start();
 connections.start();
 manager.startAll();
+driverHost.start();
 
 let shuttingDown = false;
 const shutdown = async () => {
   if (shuttingDown) return;
   shuttingDown = true;
   setTimeout(() => process.exit(1), 3000).unref();
-  await Promise.all([obs.stop(), manager.stopAll()]);
+  cameras.stop();
+  await Promise.all([obs.stop(), manager.stopAll(), driverHost.stop()]);
   await app.close();
   process.exit(0);
 };

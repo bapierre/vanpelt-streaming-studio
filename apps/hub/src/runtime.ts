@@ -8,6 +8,8 @@ export function runtimePaths(env: Record<string, string | undefined> = process.e
   return {
     env: join(data, '.env'),
     secrets: join(data, '.streamhub/secrets.json'),
+    cameras: join(data, '.streamhub/cameras.json'),
+    modules: env.STREAMHUB_MODULES_DIR || join(root, 'modules'),
     dashboard: env.STREAMHUB_DASHBOARD_DIR || join(root, 'apps/dashboard/dist'),
     proto:
       env.STREAMHUB_PROTO_PATH || join(root, 'apps/hub/src/connectors/youtube/stream_list.proto'),

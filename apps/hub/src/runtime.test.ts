@@ -20,10 +20,13 @@ describe('runtimePaths', () => {
         STREAMHUB_DATA_DIR: '/app/data',
         STREAMHUB_DASHBOARD_DIR: '/app/resources/dashboard',
         STREAMHUB_PROTO_PATH: '/app/resources/stream_list.proto',
+        STREAMHUB_MODULES_DIR: '/app/resources/modules',
       }),
     ).toEqual({
       env: join('/app/data', '.env'),
       secrets: join('/app/data', '.streamhub/secrets.json'),
+      cameras: join('/app/data', '.streamhub/cameras.json'),
+      modules: '/app/resources/modules',
       dashboard: '/app/resources/dashboard',
       proto: '/app/resources/stream_list.proto',
     });

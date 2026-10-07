@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { Bus } from './bus/bus';
-import { attachWebSocket } from './ws/server';
+import { attachWebSocket, type AuthorizeDriver } from './ws/server';
 
 export type ServerOptions = {
   bus: Bus;
@@ -11,6 +11,7 @@ export type ServerOptions = {
   dashboardDir: string;
   logger?: FastifyServerOptions['logger'];
   youtubeCallback?: (query: Record<string, string | undefined>) => Promise<string>;
+  authorizeDriver?: AuthorizeDriver;
 };
 
 export function allowedOrigins(port: number, dev: boolean): string[] {
@@ -44,6 +45,7 @@ export async function createServer(opts: ServerOptions): Promise<FastifyInstance
   const wss = attachWebSocket(app.server, {
     bus: opts.bus,
     allowedOrigins: allowedOrigins(opts.port, opts.dev),
+    authorizeDriver: opts.authorizeDriver,
   });
   // Upgraded sockets keep the HTTP server open, so close them before Fastify waits on it.
   app.addHook('preClose', async () => {
