@@ -1,0 +1,6 @@
+{
+  "id": "camera-gopro",
+  "name": "GoPro (Open GoPro over USB)",
+  "version": "0.1.0",
+  "driver": { "entry": "src/main.ts" }
+}
