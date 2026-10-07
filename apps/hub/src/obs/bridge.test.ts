@@ -199,6 +199,14 @@ describe('ObsBridge', () => {
     expect(obs.calls.map(([t]) => t)).not.toContain('StartStream');
   });
 
+  it('passes direct calls through only while connected', async () => {
+    obs.connectResults = [new Error('down')];
+    bridge.start();
+    await flush();
+    await expect(bridge.call('GetInputList')).rejects.toThrow('OBS is not connected');
+    expect(obs.calls.map(([t]) => t)).not.toContain('GetInputList');
+  });
+
   it('survives OBS rejecting a command', async () => {
     obs.failing.add('StartStream');
     bridge.start();

@@ -74,6 +74,12 @@ export class ObsBridge {
     await this.opts.client.disconnect().catch(() => {});
   }
 
+  /** For hub services that need replies from OBS; throws while disconnected. */
+  async call(requestType: string, requestData?: object): Promise<unknown> {
+    if (!this.connected) throw new Error('OBS is not connected');
+    return this.opts.client.call(requestType, requestData);
+  }
+
   private emit<T extends KnownEventType>(type: T, payload: EventPayload<T>) {
     this.opts.bus.publish({ type, payload, source: 'obs' });
   }
