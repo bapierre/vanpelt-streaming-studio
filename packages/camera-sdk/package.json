@@ -1,0 +1,23 @@
+{
+  "name": "@streamhub/camera-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@streamhub/overlay-sdk": "workspace:*",
+    "@streamhub/shared": "workspace:*",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/ws": "^8.18.2",
+    "vitest": "^5.0.2"
+  }
+}

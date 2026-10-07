@@ -127,6 +127,28 @@ importers:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.3)(jsdom@30.1.1)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15))
 
+  packages/camera-sdk:
+    dependencies:
+      '@streamhub/overlay-sdk':
+        specifier: workspace:*
+        version: link:../overlay-sdk
+      '@streamhub/shared':
+        specifier: workspace:*
+        version: link:../shared
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.3
+        version: 26.6.3
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@types/node@26.6.3)(jsdom@30.1.1)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15))
+
   packages/overlay-sdk:
     dependencies:
       '@streamhub/shared':
