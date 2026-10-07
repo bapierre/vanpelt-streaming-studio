@@ -27,13 +27,14 @@ Read `ARCHITECTURE.md` for the design, `EVENTS.md` for the event contract, `TASK
 - Hub: Fastify + `ws`, `obs-websocket-js` (v5 protocol), `zod` for validation.
 - Dashboard + overlays: React + Vite.
 - Tests: Vitest. Lint: ESLint + Prettier.
-- Desktop shell (Tauri 2) comes **after** the base is proven on a real stream.
+- Desktop shell: Tauri 2 (`apps/desktop`) wraps the dashboard and bundles the local Node hub. OS keychain migration is deferred.
 
 ## Repo layout
 ```
 apps/
   hub/          # Node process: bus, connectors, OBS bridge, HTTP/WS server
   dashboard/    # React control panel (scenes, stream control, status; chat in M2)
+  desktop/      # Tauri shell + bundled Node hub, no duplicate dashboard
   relay/        # Cloudflare Worker for webhook-only platforms (Kick), M3
 packages/
   shared/       # event types + zod schemas (single source of truth)

@@ -12,6 +12,8 @@ Open-source, local-first control hub for live shows. It sits next to OBS: OBS en
 ## Run
 - Development: `pnpm dev`, then open http://127.0.0.1:5173
 - Production-like: `pnpm build && pnpm start`, then open http://127.0.0.1:4747
+- Desktop: `pnpm desktop:dev` (requires Rust and the native build tools for Tauri 2). Close the window to stop its hub.
+- Package desktop: `pnpm desktop:build`. The app bundles Node, the hub, and the dashboard; no Node installation is needed to run it. See [desktop setup](docs/desktop.md).
 
 ## Docs
 `CLAUDE.md` (rules), `ARCHITECTURE.md`, `EVENTS.md` (event contract), `docs/superpowers/specs/` (design), `docs/go-live.md` (pre-show checklist).

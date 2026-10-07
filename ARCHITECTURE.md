@@ -88,7 +88,7 @@ Named, scripted cue lists loaded from `config/sequences/*.json`, triggered from 
 Step types: `do` (publish an event), `wait` (ms), `waitFor` (event type, optional timeout). A running sequence can be cancelled (`show.sequence.cancel`).
 
 ### 6. Dashboard (`apps/dashboard`)
-Served by the hub at `http://127.0.0.1:4747/`.
+Served by the hub at `http://127.0.0.1:4747/`. The Tauri desktop shell (`apps/desktop`) loads the same dashboard from its own bundled hub, with no changes to the event or WebSocket contracts. See `docs/desktop.md` for lifecycle, packaging, and configuration.
 - **Unified chat:** one column, platform color tag + icon, author, text with emotes; filters by platform; click a message → "Feature" (publishes `show.feature.set`).
 - **Scenes:** buttons for every OBS scene, current scene highlighted.
 - **Sequences:** buttons for each sequence, running state, cancel.
@@ -123,11 +123,11 @@ A hosted, self-hostable Cloudflare Worker that receives Kick webhooks and does K
 ## Config & secrets
 - `.env` (gitignored): `HUB_PORT`, `OBS_WS_URL`, `OBS_WS_PASSWORD`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_CHANNEL`, `YOUTUBE_API_KEY` / OAuth creds, `KICK_*`.
 - `config/` (committed, no secrets): sequences, platform colors, enabled connectors.
-- Later (Tauri shell): move tokens to the OS keychain and do OAuth in-app.
+- Desktop builds use the OS application-data directory for `.env` and `.streamhub/secrets.json`; development keeps the repo paths. OS keychain storage is deferred. OAuth continues in the system browser.
 
 ## Security
 - Listen on 127.0.0.1 only. Reject WebSocket connections whose Origin is not the hub itself (or the Vite dev server in development). OBS Browser Sources load overlays from the hub, so they send the hub's origin. Modules additionally need their session token (M4).
 - Treat all chat text as untrusted: render as text, never `innerHTML`.
 
 ## Out of scope for the base
-Teleprompter/script view, chat-triggered effects, votes/polls, sound playback, Tauri packaging, X integration, AI features.
+Teleprompter/script view, chat-triggered effects, votes/polls, sound playback, X integration, AI features.

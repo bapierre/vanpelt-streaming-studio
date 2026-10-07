@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
 import OBSWebSocket from 'obs-websocket-js';
 import { WebSocket } from 'ws';
@@ -13,14 +12,16 @@ import { createYouTubeApi } from './connectors/youtube/api';
 import { YouTubeAuth } from './connectors/youtube/auth';
 import { YouTubeConnector } from './connectors/youtube/connector';
 import { ObsBridge, type ObsClient } from './obs/bridge';
+import { runtimePaths } from './runtime';
 import { SecretsStore } from './secrets/store';
 import { createServer } from './server';
 
-loadDotenv({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
+const paths = runtimePaths();
+loadDotenv({ path: paths.env, quiet: true });
 const cfg = loadConfig();
 
 const bus = new Bus();
-const store = new SecretsStore(fileURLToPath(new URL('../../../.streamhub/secrets.json', import.meta.url)));
+const store = new SecretsStore(paths.secrets);
 await store.load();
 
 const twitchAuth = cfg.twitchClientId ? new TwitchAuth({ clientId: cfg.twitchClientId, store }) : null;
@@ -63,7 +64,7 @@ const app = await createServer({
   bus,
   port: cfg.port,
   dev: cfg.dev,
-  dashboardDir: fileURLToPath(new URL('../../dashboard/dist', import.meta.url)),
+  dashboardDir: paths.dashboard,
   youtubeCallback: (q) => connections.handleYouTubeCallback(q),
 });
 const obs = new ObsBridge({
@@ -97,3 +98,10 @@ const shutdown = async () => {
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+if (process.env.STREAMHUB_DESKTOP === '1') {
+  // Closing the parent's pipe also cleans up after an unexpectedly terminated desktop app.
+  process.stdin.on('end', shutdown);
+  process.stdin.resume();
+  process.stdout.write(`streamhub.desktop.ready:${cfg.port}\n`);
+}

@@ -8,6 +8,9 @@
   },
   "scripts": {
     "dev": "pnpm --filter @streamhub/hub --filter @streamhub/dashboard --parallel run dev",
+    "desktop:dev": "pnpm --filter @streamhub/desktop run dev",
+    "desktop:build": "pnpm --filter @streamhub/desktop run build",
+    "desktop:prepare": "pnpm build && node apps/desktop/scripts/prepare.mjs",
     "build": "pnpm --filter @streamhub/dashboard run build",
     "start": "pnpm --filter @streamhub/hub run start",
     "test": "pnpm -r --if-present run test",
@@ -17,6 +20,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2.12.1",
+    "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.9",

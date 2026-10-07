@@ -1,11 +1,11 @@
-import { fileURLToPath } from 'node:url';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
+import { runtimePaths } from '../../runtime';
 import { fromGrpcResponse, type YtListResponse } from './normalize';
 
 const API = 'https://www.googleapis.com/youtube/v3';
 const GRPC_HOST = 'youtube.googleapis.com:443';
-const PROTO_PATH = fileURLToPath(new URL('./stream_list.proto', import.meta.url));
+const PROTO_PATH = runtimePaths().proto;
 
 /** `chatDisabled`: the broadcast is live but its chat is turned off. */
 export type YouTubeApiErrorKind = 'auth' | 'ended' | 'chatDisabled' | 'rate' | 'other';

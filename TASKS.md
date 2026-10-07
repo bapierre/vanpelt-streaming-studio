@@ -8,4 +8,6 @@ The approved design is `docs/superpowers/specs/2026-10-01-streamhub-base-design.
 - [ ] M4 Module host + settings
 
 ## After the base
-Tauri shell · then live-coded modules: chat overlay · featured message · transitions · sequencer · teleprompter · roast-o-meter · karaoke picker · hackathon voting · average-ness score · fake-money bets · chat-triggered sounds.
+- [x] Initial Tauri desktop shell (bundled local hub + existing dashboard, `docs/desktop.md`); keychain storage and signed distribution deferred
+
+Live-coded modules: chat overlay · featured message · transitions · sequencer · teleprompter · roast-o-meter · karaoke picker · hackathon voting · average-ness score · fake-money bets · chat-triggered sounds.
