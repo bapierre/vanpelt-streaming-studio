@@ -134,6 +134,58 @@ OBS-side control keys: `obs.brightness`, `obs.contrast`, `obs.saturation`, `obs.
 
 `camera.driver.*` events are only exchanged between the hub and the driver that owns the camera. Drivers connect to `/ws?driver=<moduleId>&token=<token>` without an Origin header; the token is handed to the driver process by the hub at launch. A driver may publish only `camera.driver.state` for its own camera ids and receives only `camera.driver.cmd.set` for them.
 
+## Audio
+Each mic is an OBS audio input listed in `.streamhub/audio.json`. Audio never passes through the hub: OBS mixes, filters and records it, and the hub controls OBS. Track 1 carries the stream mix; each of the first five mics is also routed alone to tracks 2–6 so recordings keep every voice separate. Later mics are mixed and tunable but get no isolated track (`track: null`). Setup: `docs/audio/mics.md`.
+```ts
+type MicFilters = {                                  // a chain of `streamhub <name>` filters on the input, in this order
+  gain:       { enabled; db };                       // -30..30
+  denoise:    { enabled; method: 'rnnoise' | 'speex'; suppressDb };   // suppressDb -60..0 (speex only)
+  gate:       { enabled; openDb; closeDb; attackMs; holdMs; releaseMs };
+  eq:         { enabled; low; mid; high };           // dB, -20..20
+  compressor: { enabled; ratio; thresholdDb; attackMs; releaseMs; outputDb };
+  limiter:    { enabled; thresholdDb; releaseMs };
+};
+
+type MicState = {
+  id: string;                  // slug: [a-z0-9-]+
+  name: string;
+  input: string;               // OBS input name
+  channel: 'both' | 'left' | 'right';  // side of a stereo device this mic is on
+  track: number | null;        // isolated recording track 2–6
+  status: 'ok' | 'missing' | 'offline';
+  detail?: string;
+  live: boolean;               // the input is in the program scene (audible on stream)
+  volumeDb: number;            // fader
+  muted: boolean;
+  monitor: 'off' | 'monitor' | 'both';   // monitor = headphones only, both = headphones and output
+  syncOffsetMs: number;
+  filters: MicFilters;
+  soundcheck?: { state: 'listening' | 'done' | 'failed'; until?; measuredDb?; gainDb?; detail? };
+};
+
+type AudioState = {
+  mics: MicState[];            // config order; decides track assignment
+  targetDb: number;            // speech level the sound check aims for, dBFS (-40..-6, default -20)
+  recordTracks: number[];      // tracks OBS records
+  recordDetail?: string;       // why the recording tracks could not be set
+  record: { state: 'stopped' | 'starting' | 'recording' | 'stopping'; startedAt?; lastFile?; detail? };
+};
+```
+| type | payload |
+|---|---|
+| `audio.state` | `AudioState` (retained) |
+| `audio.levels` | `{ levels: { [micId]: { peakDb, rmsDb } } }` about 15 per second while OBS is connected; never retained |
+| `audio.devices` | `{ devices: { id, name }[], inputs: string[], detail? }` capture devices, and OBS audio inputs that are not mics yet (retained) |
+| `audio.cmd.set` | `{ id, name?, volumeDb?, muted?, monitor?, syncOffsetMs?, filters?: partial MicFilters }` |
+| `audio.cmd.add` | `{ name, channel?, from: { kind: 'device', device } \| { kind: 'input', input } }` create an OBS input for a device, or adopt an existing one |
+| `audio.cmd.remove` | `{ id }` stop managing the mic (the OBS input and its filters stay) |
+| `audio.cmd.soundcheck` | `{ id, action: 'start' \| 'cancel', seconds?: 3..30 }` measure speech and set the gain to `targetDb` |
+| `audio.cmd.setTarget` | `{ targetDb }` |
+| `audio.cmd.record` | `{ action: 'start' \| 'stop' }` OBS local recording |
+| `audio.cmd.listDevices` | `{}` refresh `audio.devices` |
+| `audio.cmd.nest` | `{ scene? }` add the `streamhub mics` scene to `scene`, or to every scene |
+
+
 ## Module events
 Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`.
 
@@ -148,6 +200,6 @@ Hub → client: envelopes, plus
 - `{ "op": "error", "code": "bad_json"|"bad_op"|"bad_payload"|"forbidden", "message": string }`; the connection stays open.
 - `{ "op": "history-result", "reqId": string, "events": Envelope[] }`
 
-**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection`, `platform.status` (one per platform), `connections.state` (one per platform) and `camera.state` (one per camera) that match the new topics, oldest first. A reloaded dashboard is correct at once.
+**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection`, `platform.status` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state` and `audio.devices` that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
-**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*` and `camera.cmd.*`, and never receive `camera.driver.*`.
+**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*` and `audio.cmd.*`, and never receive `camera.driver.*`.

@@ -92,6 +92,21 @@ describe('camera events', () => {
   });
 });
 
+describe('audio events', () => {
+  it('accepts a partial filter patch and rejects out-of-range values', () => {
+    expect(validatePayload('audio.cmd.set', { id: 'host', filters: { compressor: { ratio: 4 } } }).ok).toBe(true);
+    expect(validatePayload('audio.cmd.set', { id: 'host', filters: { gain: { db: 40 } } }).ok).toBe(false);
+    expect(validatePayload('audio.cmd.set', { id: 'host', volumeDb: 30 }).ok).toBe(false);
+  });
+  it('defaults a new mic to both channels', () => {
+    const r = validatePayload('audio.cmd.add', { name: 'Guest', from: { kind: 'device', device: 'usb-1' } });
+    expect(r.ok && (r.payload as { channel: string }).channel).toBe('both');
+  });
+  it('limits the sound check length', () => {
+    expect(validatePayload('audio.cmd.soundcheck', { id: 'host', action: 'start', seconds: 60 }).ok).toBe(false);
+  });
+});
+
 describe('ClientOpSchema', () => {
   it('defaults history limit to 50', () => {
     const op = ClientOpSchema.parse({ op: 'history', reqId: 'r1', topic: 'chat.message' });

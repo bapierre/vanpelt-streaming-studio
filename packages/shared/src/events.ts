@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  AudioDevicesSchema,
+  AudioLevelsSchema,
+  AudioStateSchema,
+  MicAddSchema,
+  MicIdSchema,
+  MicPatchSchema,
+} from './audio';
 import { CameraDriverStateSchema, CameraIdSchema, CameraSetSchema, CameraStateSchema } from './cameras';
 
 export const PlatformSchema = z.enum(['twitch', 'youtube', 'kick']);
@@ -88,6 +96,22 @@ export const EventSchemas = {
   'camera.cmd.set': CameraSetSchema,
   'camera.driver.state': CameraDriverStateSchema,
   'camera.driver.cmd.set': CameraSetSchema,
+  'audio.state': AudioStateSchema,
+  'audio.levels': AudioLevelsSchema,
+  'audio.devices': AudioDevicesSchema,
+  'audio.cmd.set': MicPatchSchema,
+  'audio.cmd.add': MicAddSchema,
+  'audio.cmd.remove': z.object({ id: MicIdSchema }),
+  'audio.cmd.soundcheck': z.object({
+    id: MicIdSchema,
+    action: z.enum(['start', 'cancel']),
+    seconds: z.number().int().min(3).max(30).optional(),
+  }),
+  'audio.cmd.setTarget': z.object({ targetDb: z.number().min(-40).max(-6) }),
+  'audio.cmd.record': z.object({ action: z.enum(['start', 'stop']) }),
+  'audio.cmd.listDevices': Empty,
+  /** Put the mics scene into `scene`, or into every scene when omitted, so the mics are heard there. */
+  'audio.cmd.nest': z.object({ scene: z.string().min(1).optional() }),
 } as const;
 
 export type KnownEventType = keyof typeof EventSchemas;

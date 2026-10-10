@@ -231,6 +231,15 @@ describe('camera drivers', () => {
     await sync(c);
     expect(seen).toEqual([{ id: 'gopro' }]);
   });
+
+  it('lets dashboards send audio commands', async () => {
+    const seen: unknown[] = [];
+    bus.subscribe(['audio.cmd.'], (e) => seen.push(e.payload));
+    const c = await open(ORIGIN);
+    c.send({ op: 'publish', event: { type: 'audio.cmd.set', payload: { id: 'host', muted: true } } });
+    await sync(c);
+    expect(seen).toEqual([{ id: 'host', muted: true }]);
+  });
 });
 
 describe('robustness', () => {

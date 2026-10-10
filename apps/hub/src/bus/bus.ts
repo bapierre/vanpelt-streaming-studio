@@ -13,6 +13,8 @@ const RETAINED_TYPES = new Set([
   'obs.scene.changed',
   'obs.stream.state',
   'relay.connection',
+  'audio.state',
+  'audio.devices',
 ]);
 
 /** Retained once per value of the named payload field. */
