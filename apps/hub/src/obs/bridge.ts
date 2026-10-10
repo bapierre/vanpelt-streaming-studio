@@ -7,7 +7,7 @@ export type { Timer } from '../util/timer';
 
 /** The subset of obs-websocket-js we use, so tests can fake it. */
 export interface ObsClient {
-  connect(url: string, password?: string): Promise<unknown>;
+  connect(url: string, password?: string, identification?: { eventSubscriptions?: number }): Promise<unknown>;
   disconnect(): Promise<void>;
   call(requestType: string, requestData?: object): Promise<unknown>;
   on<T>(event: string, listener: (data: T) => void): unknown;
@@ -18,6 +18,8 @@ export type ObsBridgeOptions = {
   client: ObsClient;
   url: string;
   password: string;
+  /** obs-websocket event subscription bitmask. OBS's default leaves out high-volume events such as meters. */
+  eventSubscriptions?: number;
   timer?: Timer;
   rand?: () => number;
   now?: () => number;
@@ -80,6 +82,17 @@ export class ObsBridge {
     return this.opts.client.call(requestType, requestData);
   }
 
+  /** Listen to an obs-websocket event directly, for hub services that need more than the bus carries. */
+  onObs<T>(event: string, listener: (data: T) => void): void {
+    this.opts.client.on(event, listener);
+  }
+
+  private openConnection(url: string, password: string | undefined) {
+    const subs = this.opts.eventSubscriptions;
+    if (subs === undefined) return this.opts.client.connect(url, password);
+    return this.opts.client.connect(url, password, { eventSubscriptions: subs });
+  }
+
   private emit<T extends KnownEventType>(type: T, payload: EventPayload<T>) {
     this.opts.bus.publish({ type, payload, source: 'obs' });
   }
@@ -87,7 +100,7 @@ export class ObsBridge {
   private async connect() {
     if (this.stopped) return;
     try {
-      await this.opts.client.connect(this.opts.url, this.opts.password || undefined);
+      await this.openConnection(this.opts.url, this.opts.password || undefined);
       this.connected = true;
       this.attempt = 0;
       this.emit('obs.connection', { connected: true });

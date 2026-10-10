@@ -21,7 +21,10 @@ class FakeObs extends EventEmitter implements ObsClient {
   };
   failing = new Set<string>();
 
-  async connect() {
+  identifications: unknown[] = [];
+
+  async connect(...args: unknown[]) {
+    this.identifications.push(args[2]);
     const next = this.connectResults.shift() ?? null;
     if (next) throw next;
   }
@@ -91,6 +94,24 @@ describe('ObsBridge', () => {
       { scenes: ['Starting Soon', 'Main Cam', 'Ending'], current: 'Main Cam' },
     ]);
     expect(payloads('obs.stream.state')).toEqual([{ state: 'stopped' }]);
+  });
+
+  it('asks OBS for the configured event subscriptions and passes OBS events to listeners', async () => {
+    await bridge.stop();
+    bridge = new ObsBridge({ bus, client: obs, url: 'ws://x', password: '', eventSubscriptions: 0x30000, timer });
+    const meters: unknown[] = [];
+    bridge.onObs('InputVolumeMeters', (d) => meters.push(d));
+    bridge.start();
+    await flush();
+    expect(obs.identifications).toEqual([{ eventSubscriptions: 0x30000 }]);
+    obs.emit('InputVolumeMeters', { inputs: [] });
+    expect(meters).toEqual([{ inputs: [] }]);
+  });
+
+  it('keeps the OBS default subscriptions when none are configured', async () => {
+    bridge.start();
+    await flush();
+    expect(obs.identifications).toEqual([undefined]);
   });
 
   it('reports an already-running stream with its start time', async () => {
