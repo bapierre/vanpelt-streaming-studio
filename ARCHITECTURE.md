@@ -40,7 +40,7 @@ Reconnect with exponential backoff (1s → 60s cap, jitter).
 | Twitch | EventSub over WebSocket, hub-direct | EventSub WS + Device Code Flow (docs/setup/twitch.md) |
 | YouTube | Data API v3 live chat, hub-direct | streamList gRPC, polling fallback; BYO Google project (docs/setup/youtube.md) |
 | Kick | Official webhooks via the **relay** (`apps/relay`, M3) | Opt-in unofficial Pusher fallback. |
-| X | Video only (RTMP via multi-rtmp). Chat deferred: Enterprise/approval-only API, see `docs/connectors/x.md`. | |
+| X | Video via OBS RTMP (multi-rtmp); hub-direct livestream status (broadcast state, viewers) with the streamer's own X app | Livestream API is approval-only. Chat deferred (webhook-only, unpublished pricing), see `docs/connectors/x.md`. |
 
 #### Verify before building
 Platform APIs change. Before writing each connector, the agent must read the current official docs and confirm: auth flow + scopes, how to receive chat in real time, rate limits/quota, and ToS constraints. Record findings in `docs/connectors/<platform>.md`.
@@ -89,10 +89,10 @@ Step types: `do` (publish an event), `wait` (ms), `waitFor` (event type, optiona
 
 ### 6. Dashboard (`apps/dashboard`)
 Served by the hub at `http://127.0.0.1:4747/`. The Tauri desktop shell (`apps/desktop`) loads the same dashboard from its own bundled hub, with no changes to the event or WebSocket contracts. See `docs/desktop.md` for lifecycle, packaging, and configuration.
-- **Tabs:** Live (scenes, sources, mixer, compact chat), Sound (mic setup, sound check, headset mixes), Chat (full-size, searchable) and Settings (side menu: General, OBS, Platforms, Cameras, Stream keys). ⌘1–4 switch tabs and ⌘, opens Settings. Record, Start stream and the status bar stay visible on every tab. The tab to open on and the chat text size are saved in the browser (`localStorage`), not the hub; Settings is never reopened on its own, so a shared screen does not show it.
+- **Tabs:** Live (scenes, sources, mixer, compact chat), Sound (mic setup, sound check, headset mixes), Chat (full-size, searchable) and Settings (side menu: General, OBS, Platforms, Alerts, Goals, Cameras, Stream keys). ⌘1–4 switch tabs and ⌘, opens Settings. Record, Start stream and the status bar stay visible on every tab. The tab to open on and the chat text size are saved in the browser (`localStorage`), not the hub; Settings is never reopened on its own, so a shared screen does not show it.
 - **Unified chat:** one column, platform color tag + icon, author, text with emotes; filters by platform; click a message → "Feature" (publishes `show.feature.set`).
 - **Scenes:** buttons for every OBS scene, current scene highlighted.
-- **Sequences:** buttons for each sequence, running state, cancel.
+- **Sequences** (with the sequencer, not built yet): buttons for each sequence, running state, cancel.
 - **Status bar:** per-connector status, OBS connection, stream state, uptime.
 - Script/teleprompter view is **not** in the base (planned module).
 

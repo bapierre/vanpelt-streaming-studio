@@ -30,7 +30,7 @@ Follows, subs, gift subs, cheers, Super Chats and raids pop up on stream with a 
 streamhub gets the show recorded. [Vanpelt Studio](https://vanpelt.studio) helps with what comes next: it works like an expert YouTube team, finding the videos your audience already wants, then helping you script, shoot, check and package every one (titles and thumbnails included). You edit in whatever editor you like.
 
 ## Docs
-`CLAUDE.md` (rules), `ARCHITECTURE.md`, `EVENTS.md` (event contract), `docs/superpowers/specs/` (design), `docs/go-live.md` (pre-show checklist).
+[`STATUS.md`](STATUS.md) (where every feature stands, what is not verified yet, and how to help), `CLAUDE.md` (rules), `ARCHITECTURE.md`, `EVENTS.md` (event contract), `docs/superpowers/specs/` (design), `docs/go-live.md` (pre-show checklist).
 
 ## License
 Copyright © 2026 VanpeltVentures Pte Ltd. streamhub is free software under the [GNU Affero General Public License v3.0](LICENSE): you can use, change and share it, but if you distribute a modified version or run one as a service for others, you must publish its source under the same license.

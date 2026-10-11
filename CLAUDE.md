@@ -11,7 +11,7 @@ It sits **next to OBS, never replaces it**. OBS encodes and streams; streamhub:
 3. serves overlays as web pages that OBS loads as Browser Sources,
 4. hosts **modules** — small self-contained overlay apps (built live on stream) that react to chat and show events.
 
-Read `ARCHITECTURE.md` for the design, `EVENTS.md` for the event contract, `TASKS.md` for what to build and in what order.
+Read `ARCHITECTURE.md` for the design, `EVENTS.md` for the event contract, `TASKS.md` for what to build and in what order, `STATUS.md` for where each feature stands and what is still unverified or missing.
 
 ## Hard rules
 - **Never encode or send video.** Everything video goes through OBS.
@@ -50,4 +50,4 @@ docs/           # multistream.md, go-live.md, connectors/, superpowers/specs|pla
 - Small commits; each milestone in `TASKS.md` ends with a runnable state.
 
 ## Definition of done (per task)
-Runs with `pnpm dev`, has at least one test for its logic, handles the disconnected case, and is documented in the relevant `.md` if it changes a contract.
+Runs with `pnpm dev`, has at least one test for its logic, handles the disconnected case, and is documented in the relevant `.md` if it changes a contract. If it closes or opens a gap, `STATUS.md` says so.
