@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { HubClient } from '@streamhub/overlay-sdk';
 import type { ChatMessage } from '@streamhub/shared';
 import { AlertsPanel, type AlertActions } from './components/AlertsPanel';
@@ -11,6 +12,7 @@ import { GoalsPanel, type GoalActions } from './components/GoalsPanel';
 import type { HeadsetActions } from './components/HeadsetMatrix';
 import { ObsSettings, ObsTools } from './components/Obs';
 import { PlatformLiveBadge } from './components/PlatformLive';
+import { Preflight } from './components/Preflight';
 import { RecordControls } from './components/RecordControls';
 import { RecordingPanel } from './components/RecordingPanel';
 import { ScenePanel } from './components/ScenePanel';
@@ -20,6 +22,7 @@ import { SourcesPanel } from './components/SourcesPanel';
 import { StatusBar } from './components/StatusBar';
 import { StreamControls } from './components/StreamControls';
 import { panelId, tabId, TabBar, useTabs } from './components/Tabs';
+import { preflightChecks, summarize, type Fix } from './preflight';
 import { usePrefs } from './prefs';
 import { useAlerts } from './useAlerts';
 import { useAudio } from './useAudio';
@@ -70,6 +73,16 @@ export function App({ client }: { client: HubClient }) {
   const live = state.stream.state !== 'stopped';
   const platformsNeedAttention = Object.values(state.connections).some((c) => c?.state === 'error');
   const platformLive = Object.values(state.live).filter((l) => l && state.connections[l.platform]?.state === 'connected');
+  const checks = preflightChecks({ state, audio: audio.state, headsets, recording, cameras, alerts: alerts.config });
+  // A pre-flight Fix can open a given Settings section; any other way into Settings starts fresh.
+  const [settingsAt, setSettingsAt] = useState<string>();
+  useEffect(() => {
+    if (tab !== 'settings') setSettingsAt(undefined);
+  }, [tab]);
+  const onFix = (fix: Fix) => {
+    setSettingsAt(fix.section);
+    setTab(fix.tab);
+  };
   const onFeature = (message: ChatMessage) => client.publish('show.feature.set', { message });
   const onClearFeature = () => client.publish('show.feature.clear');
 
@@ -144,7 +157,8 @@ export function App({ client }: { client: HubClient }) {
       case 'settings':
         return (
           <SettingsTab
-            initial={platformsNeedAttention ? 'platforms' : 'general'}
+            key={settingsAt}
+            initial={settingsAt ?? (platformsNeedAttention ? 'platforms' : 'general')}
             sections={[
               {
                 id: 'general',
@@ -252,6 +266,7 @@ export function App({ client }: { client: HubClient }) {
         <TabBar tab={tab} onSelect={setTab} attention={platformsNeedAttention ? ['settings'] : []} />
         <span className="spacer" />
         {platformLive.map((l) => l && <PlatformLiveBadge key={l.platform} live={l} />)}
+        <Preflight checks={checks} onFix={onFix} />
         <RecordControls
           recording={recording}
           disabled={!obsReady}
@@ -261,6 +276,7 @@ export function App({ client }: { client: HubClient }) {
         <StreamControls
           stream={state.stream}
           disabled={!obsReady}
+          problems={summarize(checks).fails}
           onStart={() => client.publish('obs.cmd.startStream')}
           onStop={() => client.publish('obs.cmd.stopStream')}
         />

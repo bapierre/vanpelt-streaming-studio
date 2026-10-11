@@ -19,6 +19,7 @@ type StreamServiceSettings = {
 export class DestinationsService {
   private destinations: StreamDestination[] = [];
   private inObs: string | null = null;
+  private obsKeySet: boolean | undefined;
   private detail: string | undefined;
   private unsubscribe: (() => void) | null = null;
   private queue: Promise<void> = Promise.resolve();
@@ -94,6 +95,7 @@ export class DestinationsService {
       streamServiceSettings: { server: dest.server, key: dest.key },
     });
     this.inObs = id;
+    this.obsKeySet = dest.key !== '';
     this.succeed();
   }
 
@@ -101,6 +103,7 @@ export class DestinationsService {
     const current = (await this.deps.obs.call('GetStreamServiceSettings')) as StreamServiceSettings;
     const { server, key } = current.streamServiceSettings ?? {};
     this.inObs = this.destinations.find((d) => d.server === server && d.key === key)?.id ?? null;
+    this.obsKeySet = Boolean(key);
     this.succeed();
   }
 
@@ -133,6 +136,7 @@ export class DestinationsService {
       payload: {
         destinations: this.destinations,
         inObs: this.inObs,
+        ...(this.obsKeySet !== undefined ? { obsKeySet: this.obsKeySet } : {}),
         ...(this.detail ? { detail: this.detail } : {}),
       },
       source: 'hub',

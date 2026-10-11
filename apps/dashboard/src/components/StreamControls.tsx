@@ -17,6 +17,8 @@ type Props = {
   disabled: boolean;
   onStart: () => void;
   onStop: () => void;
+  /** Pre-flight problems; going live still works, but the confirm says so. */
+  problems?: number;
   confirmMs?: number;
   /** Confirming clicks faster than this are ignored, so a double-click never fires. */
   minConfirmMs?: number;
@@ -27,6 +29,7 @@ export function StreamControls({
   disabled,
   onStart,
   onStop,
+  problems = 0,
   confirmMs = 4000,
   minConfirmMs = 500,
 }: Props) {
@@ -37,7 +40,9 @@ export function StreamControls({
   const label = armed
     ? live
       ? 'Click again to STOP stream'
-      : 'Click again to GO LIVE'
+      : problems > 0
+        ? 'Click again to GO LIVE anyway'
+        : 'Click again to GO LIVE'
     : live
       ? 'Stop stream'
       : 'Start stream';
@@ -50,6 +55,7 @@ export function StreamControls({
       <button
         className={`go-live ${live ? 'danger' : 'primary'}${armed ? ' armed' : ''}`}
         disabled={disabled || changing}
+        title={!live && problems > 0 ? `Pre-flight found ${problems} problem${problems === 1 ? '' : 's'}` : undefined}
         onClick={onClick}
       >
         {label}

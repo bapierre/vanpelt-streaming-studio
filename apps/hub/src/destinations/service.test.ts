@@ -83,7 +83,7 @@ describe('DestinationsService', () => {
     await cmd('destinations.cmd.useInObs', { id: 'youtube' });
     expect(last().inObs).toBe('youtube');
     await cmd('destinations.cmd.remove', { id: 'youtube' });
-    expect(last()).toEqual({ destinations: [], inObs: null });
+    expect(last()).toEqual({ destinations: [], inObs: null, obsKeySet: true });
     expect(store.data.destinations).toEqual([]);
   });
 
@@ -94,7 +94,7 @@ describe('DestinationsService', () => {
       'SetStreamServiceSettings',
       { streamServiceType: 'rtmp_custom', streamServiceSettings: { server: YT.server, key: YT.key } },
     ]);
-    expect(last()).toEqual({ destinations: [YT], inObs: 'youtube' });
+    expect(last()).toEqual({ destinations: [YT], inObs: 'youtube', obsKeySet: true });
   });
 
   it('refuses to switch while OBS is streaming', async () => {
@@ -120,7 +120,7 @@ describe('DestinationsService', () => {
     await cmd('destinations.cmd.useInObs', { id: 'youtube' });
     obs.connected = true;
     await cmd('destinations.cmd.useInObs', { id: 'youtube' });
-    expect(last()).toEqual({ destinations: [YT], inObs: 'youtube' });
+    expect(last()).toEqual({ destinations: [YT], inObs: 'youtube', obsKeySet: true });
   });
 
   it('works out which destination OBS uses whenever OBS connects', async () => {
@@ -142,7 +142,21 @@ describe('DestinationsService', () => {
     bus.publish({ type: 'obs.connection', payload: { connected: true }, source: 'obs' });
     await svc.idle();
     expect(last().inObs).toBeNull();
+    expect(last().obsKeySet).toBe(true);
     expect(obs.calls.filter(([t]) => t === 'GetStreamServiceSettings')).toHaveLength(2);
+  });
+
+  it('reports whether OBS has any stream key, so the dashboard can warn before going live', async () => {
+    svc.start();
+    expect(last().obsKeySet).toBeUndefined();
+    bus.publish({ type: 'obs.connection', payload: { connected: true }, source: 'obs' });
+    await svc.idle();
+    expect(last().obsKeySet).toBe(false);
+
+    obs.responses.GetStreamServiceSettings = { streamServiceType: 'rtmp_common', streamServiceSettings: { key: 'set-in-obs' } };
+    bus.publish({ type: 'obs.connection', payload: { connected: true }, source: 'obs' });
+    await svc.idle();
+    expect(last()).toEqual({ destinations: [YT], inObs: null, obsKeySet: true });
   });
 
   it('forgets inObs when the destination OBS uses gets a new key', async () => {

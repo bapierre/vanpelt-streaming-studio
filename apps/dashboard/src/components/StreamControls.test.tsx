@@ -25,6 +25,16 @@ describe('StreamControls', () => {
     expect(onStart).toHaveBeenCalledTimes(1);
   });
 
+  it('says "anyway" when pre-flight found problems, and still goes live', () => {
+    const onStart = vi.fn();
+    render(<StreamControls stream={{ state: 'stopped' }} disabled={false} problems={2} onStart={onStart} onStop={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Start stream' }).title).toBe('Pre-flight found 2 problems');
+    fireEvent.click(screen.getByRole('button', { name: 'Start stream' }));
+    wait(600);
+    fireEvent.click(screen.getByRole('button', { name: 'Click again to GO LIVE anyway' }));
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
   it('stops only after confirmation while live', () => {
     const onStop = vi.fn();
     render(<StreamControls stream={{ state: 'live', startedAt: 0 }} disabled={false} onStart={vi.fn()} onStop={onStop} />);

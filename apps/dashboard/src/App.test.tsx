@@ -43,4 +43,24 @@ describe('App', () => {
     fireEvent.keyDown(window, { key: '3', metaKey: true });
     expect(screen.getByRole('searchbox', { name: 'Search chat' })).toBeTruthy();
   });
+
+  it('takes a pre-flight fix straight to the right Settings section', () => {
+    const offlineObs: HubClient = {
+      ...quietHub(),
+      onStatus: (h) => (h('open'), () => {}),
+      on: (topic, h) => {
+        if (topic === 'obs.') h({ id: '1', ts: 0, source: 'hub', type: 'obs.connection', payload: { connected: false } });
+        return () => {};
+      },
+    };
+    render(<App client={offlineObs} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Pre-flight: \d+ problem/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'OBS settings' }));
+    expect(screen.getByRole('tabpanel').id).toBe('panel-settings');
+    expect(screen.getByRole('region', { name: 'OBS' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: /^Live/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Settings/ }));
+    expect(screen.getByRole('region', { name: 'General' })).toBeTruthy();
+  });
 });

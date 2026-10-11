@@ -136,6 +136,8 @@ export const EventSchemas = {
   'destinations.list': z.object({
     destinations: z.array(StreamDestinationSchema),
     inObs: z.string().nullable(),
+    /** Whether OBS's main stream output has any key, saved here or not; omitted until OBS has been asked. */
+    obsKeySet: z.boolean().optional(),
     detail: z.string().optional(),
   }),
   'destinations.cmd.save': StreamDestinationSchema,
