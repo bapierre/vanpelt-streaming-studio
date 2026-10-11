@@ -12,6 +12,9 @@ const RETAINED_TYPES = new Set([
   'obs.scenes.list',
   'obs.scene.changed',
   'obs.stream.state',
+  'obs.settings',
+  'obs.sources.list',
+  'destinations.list',
   'relay.connection',
   'audio.state',
   'audio.devices',
@@ -20,6 +23,7 @@ const RETAINED_TYPES = new Set([
 /** Retained once per value of the named payload field. */
 const KEYED_RETAINED: Record<string, string> = {
   'platform.status': 'platform',
+  'platform.live': 'platform',
   'connections.state': 'platform',
   'camera.state': 'id',
 };

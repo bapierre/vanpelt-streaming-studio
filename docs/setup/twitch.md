@@ -15,6 +15,6 @@ streamhub reads your chat with Twitch's EventSub and signs you in with a device 
 Each person or fork registers their own app; Twitch asks apps not to share client IDs.
 
 ## Connect
-Dashboard → **Connections** → Twitch → **Connect**. Open the link, enter the code shown, and approve. The row turns **connected** with your login.
+Dashboard → **Settings** (gear button or ⌘,) → **Platforms** → Twitch → **Connect**. Open the link, enter the code shown, and approve. The row turns **connected** with your login.
 
 streamhub re-checks the login every hour, as Twitch requires. If the login expires or you revoke access, the Twitch row shows the error; press **Connect** again.

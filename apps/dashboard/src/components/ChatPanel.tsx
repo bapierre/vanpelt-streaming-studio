@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, Platform } from '@streamhub/shared';
-import { PLATFORMS } from '../platforms';
+import { CHAT_PLATFORMS, PLATFORMS, platformColor } from '../platforms';
 import { safeHttpsUrl } from '../safeUrl';
 
 type Props = {
@@ -59,15 +59,15 @@ export function ChatPanel({ messages, featuredId, onFeature, onClearFeature }: P
     });
 
   return (
-    <section className="panel chat">
+    <section className="card chat">
       <div className="chat-head">
         <h2>Chat</h2>
         <div className="filters">
-          {(Object.keys(PLATFORMS) as Platform[]).map((p) => (
+          {CHAT_PLATFORMS.map((p) => (
             <button
               key={p}
               className={hidden.has(p) ? 'filter off' : 'filter'}
-              style={{ borderColor: PLATFORMS[p].color }}
+              style={platformColor(p)}
               aria-pressed={!hidden.has(p)}
               onClick={() => toggle(p)}
             >
@@ -76,11 +76,11 @@ export function ChatPanel({ messages, featuredId, onFeature, onClearFeature }: P
           ))}
         </div>
       </div>
-      {visible.length === 0 && <p className="muted">No messages yet. Connect a platform on the Connections page.</p>}
+      {visible.length === 0 && <p className="empty">No messages yet. Connect a platform in Settings.</p>}
       <ol className="chat-list" ref={list} onScroll={(e) => onScroll(e.currentTarget)}>
         {visible.map((m) => (
           <li key={m.id} className={m.id === featuredId ? 'chat-row featured' : 'chat-row'}>
-            <span className="tag" style={{ background: PLATFORMS[m.platform].color }}>
+            <span className="tag" style={platformColor(m.platform)}>
               {PLATFORMS[m.platform].label}
             </span>
             <span className="author" style={m.author.color ? { color: m.author.color } : undefined}>

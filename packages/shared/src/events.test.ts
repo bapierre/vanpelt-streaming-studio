@@ -7,8 +7,8 @@ describe('validatePayload', () => {
   it('accepts a valid chat message', () => {
     expect(validatePayload('chat.message', chatMessage())).toMatchObject({ ok: true });
   });
-  it('rejects a platform that is not in v0', () => {
-    const r = validatePayload('chat.message', chatMessage({ platform: 'x' as never }));
+  it('rejects an unsupported platform', () => {
+    const r = validatePayload('chat.message', chatMessage({ platform: 'facebook' as never }));
     expect(r.ok).toBe(false);
   });
   it('rejects unknown event types', () => {
@@ -59,7 +59,37 @@ describe('M2 events', () => {
     });
   });
   it('rejects connecting an unknown platform', () => {
-    expect(validatePayload('connections.cmd.connect', { platform: 'x' }).ok).toBe(false);
+    expect(validatePayload('connections.cmd.connect', { platform: 'facebook' }).ok).toBe(false);
+  });
+  it('accepts X as a platform with a trimmed client id', () => {
+    expect(validatePayload('connections.cmd.connect', { platform: 'x' }).ok).toBe(true);
+    expect(validatePayload('connections.cmd.setXClient', { clientId: ' abc ' })).toEqual({
+      ok: true,
+      payload: { clientId: 'abc' },
+    });
+    expect(validatePayload('connections.cmd.setXClient', { clientId: ' ' }).ok).toBe(false);
+  });
+  it('validates platform.live', () => {
+    const live = { platform: 'x', ingest: 'unknown', broadcast: 'running', viewers: 12 };
+    expect(validatePayload('platform.live', live).ok).toBe(true);
+    expect(validatePayload('platform.live', { ...live, broadcast: 'paused' }).ok).toBe(false);
+    expect(validatePayload('platform.live', { ...live, viewers: -1 }).ok).toBe(false);
+  });
+  it('accepts only ws:// or wss:// OBS addresses', () => {
+    expect(validatePayload('connections.cmd.setObs', { url: 'http://127.0.0.1:4455' }).ok).toBe(false);
+    expect(validatePayload('connections.cmd.setObs', { url: ' ws://127.0.0.1:4455 ', password: '' })).toEqual({
+      ok: true,
+      payload: { url: 'ws://127.0.0.1:4455', password: '' },
+    });
+  });
+});
+
+describe('stream destination events', () => {
+  const twitch = { id: 'twitch', label: 'Twitch', server: 'rtmp://live.twitch.tv/app', key: 'live_123' };
+  it('accepts an RTMP destination and rejects other schemes', () => {
+    expect(validatePayload('destinations.cmd.save', twitch).ok).toBe(true);
+    expect(validatePayload('destinations.cmd.save', { ...twitch, server: 'https://twitch.tv' }).ok).toBe(false);
+    expect(validatePayload('destinations.cmd.save', { ...twitch, id: 'Twitch Main' }).ok).toBe(false);
   });
 });
 

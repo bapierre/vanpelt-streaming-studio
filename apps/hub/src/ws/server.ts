@@ -10,9 +10,16 @@ import {
 import type { Bus } from '../bus/bus';
 
 /** Event prefixes a dashboard client may publish. Modules get their own rules in M4. */
-export const DASHBOARD_PUBLISHABLE = ['obs.cmd.', 'show.', 'connections.cmd.', 'camera.cmd.', 'audio.cmd.'];
+export const DASHBOARD_PUBLISHABLE = [
+  'obs.cmd.',
+  'show.',
+  'connections.cmd.',
+  'camera.cmd.',
+  'destinations.cmd.',
+  'audio.cmd.',
+];
 /** Events that may carry secrets: handled inside the hub, never sent to any client. */
-export const NEVER_FORWARDED = ['connections.cmd.'];
+export const NEVER_FORWARDED = ['connections.cmd.', 'destinations.cmd.'];
 /** Hub ↔ camera driver traffic: only the owning driver connection sees it. */
 export const DRIVER_ONLY = ['camera.driver.'];
 export const MAX_MESSAGE_BYTES = 64 * 1024;

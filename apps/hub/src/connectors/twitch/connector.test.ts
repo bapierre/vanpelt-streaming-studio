@@ -199,7 +199,7 @@ describe('TwitchConnector', () => {
       metadata: { message_id: 'v1', message_type: 'revocation', message_timestamp: '2022-11-16T10:11:12Z', subscription_type: 'channel.chat.message' },
       payload: { subscription: { type: 'channel.chat.message', status: 'authorization_revoked' } },
     });
-    expect(lastStatus()).toMatchObject({ status: 'error', detail: expect.stringContaining('Connections') });
+    expect(lastStatus()).toMatchObject({ status: 'error', detail: expect.stringContaining('Settings → Platforms') });
     expect(onAuthLost).toHaveBeenCalledWith(expect.stringContaining('Twitch access was revoked'));
     expect(sockets[0]!.closed).toBe(true);
     sockets[0]!.drop(1000);

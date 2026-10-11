@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DashboardState } from '../state';
+import { formatUptime, type DashboardState } from '../state';
+import { useNow } from './StatusBar';
+
+function OnAir({ stream }: { stream: DashboardState['stream'] }) {
+  const now = useNow(1000);
+  if (stream.state !== 'live') return <span className="on-air off">{stream.state === 'stopped' ? 'Off air' : stream.state}</span>;
+  return (
+    <span className="on-air">
+      Live{stream.startedAt !== undefined && <span className="uptime">{formatUptime(now - stream.startedAt)}</span>}
+    </span>
+  );
+}
 
 type Props = {
   stream: DashboardState['stream'];
@@ -57,12 +68,14 @@ export function StreamControls({
 
   return (
     <div className="stream-controls">
-      <button className={live ? 'danger' : 'primary'} disabled={disabled || changing} onClick={onClick}>
+      {!disabled && <OnAir stream={stream} />}
+      <button
+        className={`go-live ${live ? 'danger' : 'primary'}${armed ? ' armed' : ''}`}
+        disabled={disabled || changing}
+        onClick={onClick}
+      >
         {label}
       </button>
-      <p className="hint">
-        Other platforms (multi-rtmp targets) follow OBS only if “Sync start/stop with OBS” is ticked.
-      </p>
     </div>
   );
 }

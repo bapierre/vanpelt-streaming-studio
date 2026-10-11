@@ -13,6 +13,7 @@ import { promisify } from 'node:util';
 import { bundle } from './bundle.mjs';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
+const node = process.env.STREAMHUB_TEST_NODE || process.execPath;
 const require = createRequire(join(root, 'apps/hub/package.json'));
 const { WebSocket } = require('ws');
 const children = new Set();
@@ -58,7 +59,7 @@ function env() {
 }
 
 function launch() {
-  const child = spawn(process.execPath, [join(dir, 'hub.mjs')], {
+  const child = spawn(node, [join(dir, 'hub.mjs')], {
     env: env(),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -149,7 +150,7 @@ test(
       `import { loadStreamListService } from ${JSON.stringify(join(root, 'apps/hub/src/connectors/youtube/api.ts'))};\nconsole.log(typeof loadStreamListService());\n`,
     );
     await bundle(probe, join(dir, 'probe.mjs'));
-    const { stdout } = await promisify(execFile)(process.execPath, [join(dir, 'probe.mjs')], {
+    const { stdout } = await promisify(execFile)(node, [join(dir, 'probe.mjs')], {
       env: env(),
     });
     assert.equal(stdout.trim(), 'function');

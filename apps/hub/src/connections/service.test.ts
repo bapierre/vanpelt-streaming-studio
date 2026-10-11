@@ -8,6 +8,8 @@ let bus: Bus;
 let all: Envelope[];
 let twitch: { [K in 'tokens' | 'startDeviceFlow' | 'pollDeviceFlow' | 'clear']: ReturnType<typeof vi.fn> };
 let youtube: Record<string, ReturnType<typeof vi.fn>>;
+let x: Record<string, ReturnType<typeof vi.fn>>;
+let xApi: { me: ReturnType<typeof vi.fn> };
 let restart: ReturnType<typeof vi.fn>;
 let halt: ReturnType<typeof vi.fn>;
 let service: ConnectionsService;
@@ -18,6 +20,8 @@ const make = (overrides: Partial<ConnectionsDeps> = {}) =>
     twitch: twitch as never,
     youtube: youtube as never,
     youtubeApi: { myChannelTitle: vi.fn(async () => 'Your Average Tech Founder') },
+    x: x as never,
+    xApi: xApi as never,
     restart: restart as never,
     halt: halt as never,
     ...overrides,
@@ -45,6 +49,19 @@ beforeEach(() => {
     accessToken: vi.fn(async () => 'tok'),
     clearTokens: vi.fn(async () => {}),
   };
+  let xConfigured = false;
+  x = {
+    clientConfigured: vi.fn(() => xConfigured),
+    connected: vi.fn(() => false),
+    account: vi.fn(() => undefined),
+    setClient: vi.fn(async () => void (xConfigured = true)),
+    setAccount: vi.fn(async () => {}),
+    beginAuth: vi.fn(() => 'https://x.com/i/oauth2/authorize?x=1'),
+    completeAuth: vi.fn(async () => {}),
+    accessToken: vi.fn(async () => 'xtok'),
+    clearTokens: vi.fn(async () => {}),
+  };
+  xApi = { me: vi.fn(async () => ({ id: '42', username: 'yatf' })) };
   restart = vi.fn();
   halt = vi.fn(async () => {});
   service = make();
@@ -61,6 +78,7 @@ describe('ConnectionsService', () => {
     expect(states('twitch')).toEqual([{ platform: 'twitch', state: 'connected', account: 'yatf' }]);
     expect(states('youtube')).toEqual([{ platform: 'youtube', state: 'disconnected', clientConfigured: false }]);
     expect(states('kick')).toEqual([{ platform: 'kick', state: 'disconnected', detail: 'Kick arrives with the relay (M3).' }]);
+    expect(states('x')).toEqual([{ platform: 'x', state: 'disconnected', clientConfigured: false }]);
   });
 
   it('explains how to configure Twitch when no client id is set', () => {
@@ -71,11 +89,11 @@ describe('ConnectionsService', () => {
   it('reports lost Twitch auth as an error and can connect again from it', async () => {
     twitch.tokens.mockReturnValue({ login: 'yatf' });
     service.start();
-    service.authLost('twitch', 'Twitch login expired. Reconnect Twitch on the Connections page.');
+    service.authLost('twitch', 'Twitch login expired. Reconnect Twitch in Settings → Platforms.');
     expect(states('twitch').at(-1)).toEqual({
       platform: 'twitch',
       state: 'error',
-      detail: 'Twitch login expired. Reconnect Twitch on the Connections page.',
+      detail: 'Twitch login expired. Reconnect Twitch in Settings → Platforms.',
     });
     cmd('connections.cmd.connect', { platform: 'twitch' });
     await settle();
@@ -87,12 +105,12 @@ describe('ConnectionsService', () => {
   it('reports lost YouTube auth as an error with the client still configured, and can connect again', async () => {
     youtube.clientConfigured!.mockReturnValue(true);
     service.start();
-    service.authLost('youtube', 'YouTube sign-in expired. Reconnect YouTube on the Connections page.');
+    service.authLost('youtube', 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.');
     expect(states('youtube').at(-1)).toEqual({
       platform: 'youtube',
       state: 'error',
       clientConfigured: true,
-      detail: 'YouTube sign-in expired. Reconnect YouTube on the Connections page.',
+      detail: 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.',
     });
     cmd('connections.cmd.connect', { platform: 'youtube' });
     await settle();
@@ -264,5 +282,101 @@ describe('ConnectionsService', () => {
     expect(states('youtube').some((s) => (s as { state: string }).state === 'connected')).toBe(false);
     expect(states('youtube').at(-1)).toMatchObject({ state: 'disconnected' });
     expect(restart).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConnectionsService X', () => {
+  it('publishes a connected X account at start', () => {
+    x.connected!.mockReturnValue(true);
+    x.clientConfigured!.mockReturnValue(true);
+    x.account!.mockReturnValue('@yatf');
+    service.start();
+    expect(states('x')).toEqual([{ platform: 'x', state: 'connected', clientConfigured: true, account: '@yatf' }]);
+  });
+
+  it('saves the X client id after halting the connector, without leaking it', async () => {
+    service.start();
+    cmd('connections.cmd.setXClient', { clientId: ' XCLIENTID ' });
+    await settle();
+    expect(halt).toHaveBeenCalledWith('x');
+    expect(x.setClient).toHaveBeenCalledWith('XCLIENTID');
+    expect(states('x').at(-1)).toEqual({ platform: 'x', state: 'disconnected', clientConfigured: true });
+    const leaked = all.filter((e) => e.type !== 'connections.cmd.setXClient' && JSON.stringify(e).includes('XCLIENTID'));
+    expect(leaked).toEqual([]);
+  });
+
+  it('asks for a client id before X sign-in', async () => {
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'x' });
+    await settle();
+    expect(states('x').at(-1)).toEqual({
+      platform: 'x',
+      state: 'error',
+      clientConfigured: false,
+      detail: 'Add your X app client ID first (see docs/setup/x.md).',
+    });
+    expect(x.beginAuth).not.toHaveBeenCalled();
+  });
+
+  it('runs the X sign-in through the callback', async () => {
+    x.clientConfigured!.mockReturnValue(true);
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'x' });
+    await settle();
+    expect(states('x').at(-1)).toEqual({
+      platform: 'x',
+      state: 'pending',
+      clientConfigured: true,
+      authUrl: 'https://x.com/i/oauth2/authorize?x=1',
+    });
+    x.connected!.mockReturnValue(true);
+    x.account!.mockReturnValue('@yatf');
+    const page = await service.handleXCallback({ code: 'c', state: 's' });
+    expect(x.completeAuth).toHaveBeenCalledWith({ code: 'c', state: 's', error: undefined });
+    expect(xApi.me).toHaveBeenCalledWith('xtok');
+    expect(x.setAccount).toHaveBeenCalledWith({ id: '42', username: 'yatf' });
+    expect(page).toContain('X is connected');
+    expect(states('x').at(-1)).toEqual({ platform: 'x', state: 'connected', clientConfigured: true, account: '@yatf' });
+    expect(restart).toHaveBeenCalledWith('x');
+  });
+
+  it('reports a rejected X callback', async () => {
+    x.clientConfigured!.mockReturnValue(true);
+    x.completeAuth!.mockRejectedValue(new Error('This sign-in link is invalid or expired.'));
+    service.start();
+    const page = await service.handleXCallback({ code: 'c', state: 'forged' });
+    expect(page).toContain('X connection failed: This sign-in link is invalid or expired.');
+    expect(states('x').at(-1)).toMatchObject({ platform: 'x', state: 'error', clientConfigured: true });
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it('does not restart when X was disconnected mid sign-in', async () => {
+    x.clientConfigured!.mockReturnValue(true);
+    service.start();
+    const page = await service.handleXCallback({ code: 'c', state: 's' });
+    expect(page).toContain('disconnected before sign-in finished');
+    expect(states('x').at(-1)).toMatchObject({ state: 'disconnected' });
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it('disconnects X: halts the connector and forgets tokens', async () => {
+    x.clientConfigured!.mockReturnValue(true);
+    service.start();
+    cmd('connections.cmd.disconnect', { platform: 'x' });
+    await settle();
+    expect(halt).toHaveBeenCalledWith('x');
+    expect(x.clearTokens).toHaveBeenCalled();
+    expect(states('x').at(-1)).toEqual({ platform: 'x', state: 'disconnected', clientConfigured: true });
+  });
+
+  it('reports lost X auth as an error with the client still configured', () => {
+    service.start();
+    service.authLost('x', 'X sign-in expired. Reconnect X in Settings → Platforms.');
+    expect(states('x').at(-1)).toEqual({
+      platform: 'x',
+      state: 'error',
+      clientConfigured: true,
+      detail: 'X sign-in expired. Reconnect X in Settings → Platforms.',
+    });
   });
 });

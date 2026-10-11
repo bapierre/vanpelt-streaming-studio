@@ -16,7 +16,12 @@ import type { Connector, SocketLike } from './connectors/types';
 import { createYouTubeApi } from './connectors/youtube/api';
 import { YouTubeAuth } from './connectors/youtube/auth';
 import { YouTubeConnector } from './connectors/youtube/connector';
+import { createXApi } from './connectors/x/api';
+import { XAuth } from './connectors/x/auth';
+import { XConnector } from './connectors/x/connector';
+import { DestinationsService } from './destinations/service';
 import { ObsBridge, type ObsClient } from './obs/bridge';
+import { loadObsSettings, ObsSettingsService } from './obs/settings';
 import { runtimePaths } from './runtime';
 import { SecretsStore } from './secrets/store';
 import { createServer } from './server';
@@ -32,6 +37,8 @@ await store.load();
 const twitchAuth = cfg.twitchClientId ? new TwitchAuth({ clientId: cfg.twitchClientId, store }) : null;
 const youtubeAuth = new YouTubeAuth({ store, redirectUri: `http://127.0.0.1:${cfg.port}/oauth/youtube/callback` });
 const youtubeApi = createYouTubeApi();
+const xAuth = new XAuth({ store, redirectUri: `http://127.0.0.1:${cfg.port}/oauth/x/callback` });
+const xApi = createXApi();
 
 // Connectors are built before the service that owns connections.state, so their auth-loss callbacks bind late.
 const late: { connections?: ConnectionsService } = {};
@@ -42,6 +49,12 @@ const connectors: Connector[] = [
     api: youtubeApi,
     channel: () => youtubeAuth.account() ?? 'YouTube',
     onAuthLost: (detail) => late.connections?.authLost('youtube', detail),
+  }),
+  new XConnector({
+    bus,
+    tokens: xAuth,
+    api: xApi,
+    onAuthLost: (detail) => late.connections?.authLost('x', detail),
   }),
 ];
 if (twitchAuth) {
@@ -60,19 +73,24 @@ const connections = new ConnectionsService({
   twitch: twitchAuth,
   youtube: youtubeAuth,
   youtubeApi,
+  x: xAuth,
+  xApi,
   restart: (p) => manager.restart(p),
   halt: (p) => manager.halt(p),
 });
 late.connections = connections;
 
+const obsInitial = loadObsSettings(store, { url: cfg.obsUrl, password: cfg.obsPassword });
 const obs = new ObsBridge({
   bus,
   client: new OBSWebSocket() as unknown as ObsClient,
-  url: cfg.obsUrl,
-  password: cfg.obsPassword,
+  url: obsInitial.url,
+  password: obsInitial.password,
   // Mixer meters and "is this mic on air" are high-volume events OBS only sends on request.
   eventSubscriptions: EventSubscription.All | EventSubscription.InputVolumeMeters | EventSubscription.InputActiveStateChanged,
 });
+const obsSettings = new ObsSettingsService({ bus, store, bridge: obs, initial: obsInitial });
+const destinations = new DestinationsService({ bus, store, obs });
 
 const cameraConfigs = await loadCameras(paths.cameras);
 const drivers = await discoverDrivers(paths.modules);
@@ -101,6 +119,7 @@ const app = await createServer({
   dev: cfg.dev,
   dashboardDir: paths.dashboard,
   youtubeCallback: (q) => connections.handleYouTubeCallback(q),
+  xCallback: (q) => connections.handleXCallback(q),
   authorizeDriver: (id, token) => driverHost.authorize(id, token),
 });
 
@@ -115,6 +134,8 @@ try {
 }
 cameras.start();
 audio.start();
+obsSettings.start();
+destinations.start();
 obs.start();
 connections.start();
 manager.startAll();
@@ -127,6 +148,8 @@ const shutdown = async () => {
   setTimeout(() => process.exit(1), 3000).unref();
   cameras.stop();
   audio.stop();
+  obsSettings.stop();
+  destinations.stop();
   await Promise.all([obs.stop(), manager.stopAll(), driverHost.stop()]);
   await app.close();
   process.exit(0);

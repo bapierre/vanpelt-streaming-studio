@@ -6,7 +6,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 export const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000;
 const EXPIRY_MARGIN_MS = 60_000;
-const RECONNECT = 'YouTube sign-in expired. Reconnect YouTube on the Connections page.';
+const RECONNECT = 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.';
 
 export class YouTubeAuthError extends Error {}
 
@@ -96,7 +96,7 @@ export class YouTubeAuth implements TokenSource {
       throw new YouTubeAuthError(`Google sign-in failed: ${query.error}`);
     }
     if (!pending || query.state !== pending.state || this.now() > pending.expiresAt || !query.code) {
-      throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from the Connections page.');
+      throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
     }
     this.pending = null;
     const generation = this.generation;
@@ -143,7 +143,7 @@ export class YouTubeAuth implements TokenSource {
 
   async accessToken(): Promise<string> {
     const yt = this.opts.store.get().youtube;
-    if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it on the Connections page.');
+    if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it in Settings → Platforms.');
     if (!this.stale && yt.accessToken && yt.expiresAt && yt.expiresAt - EXPIRY_MARGIN_MS > this.now()) {
       return yt.accessToken;
     }
@@ -167,7 +167,7 @@ export class YouTubeAuth implements TokenSource {
 
   private async refresh(): Promise<string> {
     const yt = this.opts.store.get().youtube;
-    if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it on the Connections page.');
+    if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it in Settings → Platforms.');
     const generation = this.generation;
     let body: TokenResponse;
     try {

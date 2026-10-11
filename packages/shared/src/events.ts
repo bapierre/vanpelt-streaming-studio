@@ -9,7 +9,7 @@ import {
 } from './audio';
 import { CameraDriverStateSchema, CameraIdSchema, CameraSetSchema, CameraStateSchema } from './cameras';
 
-export const PlatformSchema = z.enum(['twitch', 'youtube', 'kick']);
+export const PlatformSchema = z.enum(['twitch', 'youtube', 'kick', 'x']);
 export type Platform = z.infer<typeof PlatformSchema>;
 
 export const ChatAuthorSchema = z.object({
@@ -57,6 +57,31 @@ export const ConnectionStateSchema = z.object({
 });
 export type ConnectionState = z.infer<typeof ConnectionStateSchema>;
 
+/** An RTMP target the streamer pastes once (server URL + stream key). The key is a secret. */
+export const StreamDestinationSchema = z.object({
+  id: z.string().regex(/^[a-z0-9-]+$/, 'use lowercase letters, digits and dashes').max(40),
+  label: z.string().trim().min(1).max(60),
+  server: z.string().trim().regex(/^rtmps?:\/\/\S+$/, 'use an rtmp:// or rtmps:// URL').max(500),
+  key: z.string().trim().max(500),
+});
+export type StreamDestination = z.infer<typeof StreamDestinationSchema>;
+
+/** What the platform itself reports about our livestream (independent of OBS). */
+export const PlatformLiveSchema = z.object({
+  platform: PlatformSchema,
+  /** Is the platform receiving our video? `unknown` when the API does not expose it to us. */
+  ingest: z.enum(['active', 'inactive', 'unknown']),
+  broadcast: z.enum(['none', 'scheduled', 'running', 'ended']),
+  viewers: z.number().int().nonnegative().optional(),
+  title: z.string().optional(),
+  startedAt: z.number().optional(),
+  detail: z.string().optional(),
+});
+export type PlatformLive = z.infer<typeof PlatformLiveSchema>;
+
+export const ObsSourceSchema = z.object({ name: z.string(), visible: z.boolean() });
+export type ObsSource = z.infer<typeof ObsSourceSchema>;
+
 const Empty = z.object({}).strict();
 const Connection = z.object({ connected: z.boolean(), detail: z.string().optional() });
 
@@ -69,6 +94,7 @@ export const EventSchemas = {
     status: ConnectorStatusSchema,
     detail: z.string().optional(),
   }),
+  'platform.live': PlatformLiveSchema,
   'relay.connection': Connection,
   'obs.connection': Connection,
   'obs.scene.changed': z.object({ scene: z.string() }),
@@ -82,6 +108,18 @@ export const EventSchemas = {
     source: z.string().min(1),
     visible: z.boolean(),
   }),
+  'obs.settings': z.object({ url: z.string(), passwordSet: z.boolean() }),
+  'obs.sources.list': z.object({ scene: z.string(), sources: z.array(ObsSourceSchema) }),
+  'obs.cmd.reconnect': Empty,
+  'obs.cmd.refresh': Empty,
+  'destinations.list': z.object({
+    destinations: z.array(StreamDestinationSchema),
+    inObs: z.string().nullable(),
+    detail: z.string().optional(),
+  }),
+  'destinations.cmd.save': StreamDestinationSchema,
+  'destinations.cmd.remove': z.object({ id: z.string().min(1) }),
+  'destinations.cmd.useInObs': z.object({ id: z.string().min(1) }),
   'show.feature.set': z.object({ message: ChatMessageSchema }),
   'show.feature.clear': Empty,
   'connections.state': ConnectionStateSchema,
@@ -90,6 +128,12 @@ export const EventSchemas = {
   'connections.cmd.setYoutubeClient': z.object({
     clientId: z.string().trim().min(1),
     clientSecret: z.string().trim().min(1),
+  }),
+  'connections.cmd.setXClient': z.object({ clientId: z.string().trim().min(1).max(200) }),
+  /** Omit `password` to keep the saved one; an empty string means OBS has no password. */
+  'connections.cmd.setObs': z.object({
+    url: z.string().trim().regex(/^wss?:\/\/\S+$/, 'use a ws:// or wss:// URL').max(300),
+    password: z.string().max(500).optional(),
   }),
   'camera.state': CameraStateSchema,
   'camera.cmd.take': z.object({ id: CameraIdSchema }),

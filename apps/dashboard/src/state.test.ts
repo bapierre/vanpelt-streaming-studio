@@ -23,6 +23,18 @@ describe('reduce', () => {
     expect(lost).toEqual(initialState);
   });
 
+  it('keeps OBS settings, sources and stream destinations', () => {
+    const destinations = { destinations: [{ id: 'x', label: 'X', server: 'rtmp://x', key: 'k' }], inObs: 'x' };
+    const s = apply([
+      ev('obs.settings', { url: 'ws://127.0.0.1:4455', passwordSet: true }),
+      ev('obs.sources.list', { scene: 'Main', sources: [{ name: 'Cam', visible: false }] }),
+      ev('destinations.list', destinations),
+    ]);
+    expect(s.obsSettings).toEqual({ url: 'ws://127.0.0.1:4455', passwordSet: true });
+    expect(s.sources?.sources).toEqual([{ name: 'Cam', visible: false }]);
+    expect(s.destinations).toEqual(destinations);
+  });
+
   it('later scene change wins over retained list', () => {
     const name = '🎬 "Main" Cam';
     const s = apply([
@@ -101,5 +113,13 @@ describe('chat state', () => {
     expect(s.featuredId).toBe('twitch:9');
     expect(s.connections.twitch).toEqual({ platform: 'twitch', state: 'connected', account: 'yatf' });
     expect(apply([ev('show.feature.clear', {})], s).featuredId).toBeNull();
+  });
+
+  it('keeps the latest platform.live per platform', () => {
+    const s = apply([
+      ev('platform.live', { platform: 'x', ingest: 'unknown', broadcast: 'scheduled' }),
+      ev('platform.live', { platform: 'x', ingest: 'active', broadcast: 'running', viewers: 42 }),
+    ]);
+    expect(s.live.x).toEqual({ platform: 'x', ingest: 'active', broadcast: 'running', viewers: 42 });
   });
 });

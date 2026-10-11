@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatUptime, type DashboardState } from '../state';
 
-function useNow(intervalMs: number) {
+export function useNow(intervalMs: number) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), intervalMs);

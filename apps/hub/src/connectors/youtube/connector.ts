@@ -68,7 +68,7 @@ export class YouTubeConnector implements Connector {
     this.stopped = false;
     this.generation++;
     if (!this.opts.tokens.connected()) {
-      this.status('disconnected', 'Connect YouTube on the Connections page');
+      this.status('disconnected', 'Connect YouTube in Settings → Platforms');
       return;
     }
     void this.findChat();

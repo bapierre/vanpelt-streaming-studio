@@ -85,6 +85,19 @@ describe('Bus', () => {
     expect(bus.retainedFor(['chat.'])).toEqual([]);
   });
 
+  it('retains OBS settings, sources and stream destinations', () => {
+    const bus = new Bus();
+    bus.publish({ type: 'obs.settings', payload: { url: 'ws://a', passwordSet: false }, source: 'hub' });
+    bus.publish({ type: 'obs.settings', payload: { url: 'ws://b', passwordSet: true }, source: 'hub' });
+    bus.publish({ type: 'obs.sources.list', payload: { scene: 'Main', sources: [] }, source: 'obs' });
+    bus.publish({ type: 'destinations.list', payload: { destinations: [], inObs: null }, source: 'hub' });
+    expect(bus.retainedFor(['obs.', 'destinations.']).map((e) => [e.type, e.payload])).toEqual([
+      ['obs.settings', { url: 'ws://b', passwordSet: true }],
+      ['obs.sources.list', { scene: 'Main', sources: [] }],
+      ['destinations.list', { destinations: [], inObs: null }],
+    ]);
+  });
+
   it('retains connection state per platform', () => {
     const bus = new Bus();
     bus.publish({ type: 'connections.state', payload: { platform: 'twitch', state: 'pending' }, source: 'hub' });

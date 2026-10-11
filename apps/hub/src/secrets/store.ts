@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import type { StreamDestination } from '@streamhub/shared';
 
 export type TwitchSecrets = { accessToken: string; refreshToken: string; userId: string; login: string };
 export type YouTubeSecrets = {
@@ -10,7 +11,23 @@ export type YouTubeSecrets = {
   expiresAt?: number;
   channelTitle?: string;
 };
-export type Secrets = { twitch?: TwitchSecrets; youtube?: YouTubeSecrets };
+/** X public (PKCE) client: no client secret exists. */
+export type XSecrets = {
+  clientId: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  userId?: string;
+  username?: string;
+};
+export type ObsSecrets = { url: string; password: string };
+export type Secrets = {
+  twitch?: TwitchSecrets;
+  youtube?: YouTubeSecrets;
+  x?: XSecrets;
+  obs?: ObsSecrets;
+  destinations?: StreamDestination[];
+};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

@@ -197,7 +197,7 @@ describe('YouTubeConnector', () => {
 
   it('stops with a reconnect message when the sign-in is gone', async () => {
     tokens.accessToken.mockRejectedValue(
-      new YouTubeAuthError('YouTube sign-in expired. Reconnect YouTube on the Connections page.'),
+      new YouTubeAuthError('YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.'),
     );
     connector.start();
     await settle();
@@ -207,7 +207,7 @@ describe('YouTubeConnector', () => {
     });
     expect(timer.queue).toEqual([]);
     expect(onAuthLost).toHaveBeenCalledWith(
-      'YouTube sign-in expired. Reconnect YouTube on the Connections page.',
+      'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.',
     );
   });
 

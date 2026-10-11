@@ -5,7 +5,7 @@ import { ConnectionsPanel } from './ConnectionsPanel';
 
 afterEach(cleanup);
 
-const handlers = () => ({ onConnect: vi.fn(), onDisconnect: vi.fn(), onSetYoutubeClient: vi.fn() });
+const handlers = () => ({ onConnect: vi.fn(), onDisconnect: vi.fn(), onSetYoutubeClient: vi.fn(), onSetXClient: vi.fn() });
 
 describe('ConnectionsPanel', () => {
   it('shows the Twitch code and activation link while pending', () => {
@@ -57,7 +57,7 @@ describe('ConnectionsPanel', () => {
   });
 
   it('shows errors and the YouTube policy links', () => {
-    render(<ConnectionsPanel connections={{ youtube: { platform: 'youtube', state: 'error', detail: 'YouTube sign-in expired. Reconnect YouTube on the Connections page.' } }} {...handlers()} />);
+    render(<ConnectionsPanel connections={{ youtube: { platform: 'youtube', state: 'error', detail: 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.' } }} {...handlers()} />);
     expect(screen.getByText(/sign-in expired/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'YouTube Terms of Service' }).getAttribute('href')).toBe('https://www.youtube.com/t/terms');
     expect(screen.getByRole('link', { name: 'Google Privacy Policy' }).getAttribute('href')).toBe('https://policies.google.com/privacy');
@@ -68,8 +68,8 @@ describe('ConnectionsPanel', () => {
     render(
       <ConnectionsPanel
         connections={{
-          twitch: { platform: 'twitch', state: 'error', detail: 'Twitch login expired. Reconnect Twitch on the Connections page.' },
-          youtube: { platform: 'youtube', state: 'error', clientConfigured: true, detail: 'YouTube sign-in expired. Reconnect YouTube on the Connections page.' },
+          twitch: { platform: 'twitch', state: 'error', detail: 'Twitch login expired. Reconnect Twitch in Settings → Platforms.' },
+          youtube: { platform: 'youtube', state: 'error', clientConfigured: true, detail: 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.' },
         }}
         {...h}
       />,
@@ -106,6 +106,33 @@ describe('ConnectionsPanel', () => {
       fireEvent.click(button);
       expect(h.onConnect).toHaveBeenCalledWith(platform);
     }
+  });
+
+  it('asks for the X client id, then links the X sign-in', () => {
+    const h = handlers();
+    const { rerender } = render(<ConnectionsPanel connections={{ x: { platform: 'x', state: 'disconnected', clientConfigured: false } }} {...h} />);
+    const row = within(screen.getByTestId('conn-x'));
+    fireEvent.change(row.getByLabelText('OAuth 2.0 Client ID'), { target: { value: ' xid ' } });
+    fireEvent.click(row.getByRole('button', { name: 'Save client' }));
+    expect(h.onSetXClient).toHaveBeenCalledWith('xid');
+    rerender(
+      <ConnectionsPanel connections={{ x: { platform: 'x', state: 'pending', clientConfigured: true, authUrl: 'https://x.com/i/oauth2/authorize?a=1' } }} {...h} />,
+    );
+    expect(screen.getByRole('link', { name: 'Continue to X sign-in' }).getAttribute('href')).toBe('https://x.com/i/oauth2/authorize?a=1');
+  });
+
+  it('shows the X livestream state once connected', () => {
+    render(
+      <ConnectionsPanel
+        connections={{ x: { platform: 'x', state: 'connected', clientConfigured: true, account: '@yatf' } }}
+        live={{ x: { platform: 'x', ingest: 'active', broadcast: 'running', viewers: 1200 } }}
+        {...handlers()}
+      />,
+    );
+    const row = within(screen.getByTestId('conn-x'));
+    expect(row.getByText('@yatf')).toBeTruthy();
+    expect(row.getByText(/Live · 1\.2K watching/)).toBeTruthy();
+    expect(row.getByText(/Receiving video/)).toBeTruthy();
   });
 
   it('keeps the client secret out of browser password saving', () => {

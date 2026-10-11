@@ -175,10 +175,19 @@ fn main() {
                     let navigation_origin = dashboard.clone();
                     let new_window_handle = handle.clone();
                     let new_window_origin = dashboard.clone();
-                    WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(dashboard))
-                        .title("streamhub")
-                        .inner_size(1280.0, 800.0)
-                        .min_inner_size(800.0, 600.0)
+                    let window =
+                        WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(dashboard))
+                            .title("streamhub")
+                            .inner_size(1280.0, 800.0)
+                            .min_inner_size(800.0, 600.0);
+                    // The dashboard draws a unified toolbar under the traffic lights and marks it
+                    // as the drag region (allowed by the window-drag capability in tauri.conf.json).
+                    #[cfg(target_os = "macos")]
+                    let window = window
+                        .title_bar_style(tauri::TitleBarStyle::Overlay)
+                        .hidden_title(true)
+                        .traffic_light_position(tauri::LogicalPosition::new(18.0, 19.0));
+                    window
                         .on_navigation(move |url| match navigation(url, &navigation_origin) {
                             Navigation::Dashboard => true,
                             Navigation::Browser => {
@@ -208,7 +217,7 @@ fn main() {
                             NewWindowResponse::Deny
                         })
                         .build()
-                        .map_err(|_| ())?;
+                        .map_err(|e| eprintln!("streamhub: could not open the window: {e}"))?;
                     Ok(())
                 });
                 if result.is_err() {

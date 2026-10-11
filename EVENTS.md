@@ -53,6 +53,20 @@ type ChatMessage = {
 | `chat.cleared` | `{ platform: Platform; authorId?: string }` (whole chat cleared, or one user's messages removed) |
 | `relay.connection` | `{ connected: boolean; detail?: string }` |
 | `platform.status` | `{ platform: Platform; status: 'disconnected'\|'connecting'\|'live'\|'offline'\|'error'; detail?: string }` |
+| `platform.live` | `PlatformLive` (retained per platform; what the platform reports about our livestream, independent of OBS) |
+
+```ts
+type PlatformLive = {
+  platform: Platform;
+  ingest: 'active' | 'inactive' | 'unknown'; // is the platform receiving our video? unknown when its API won't tell us
+  broadcast: 'none' | 'scheduled' | 'running' | 'ended'; // newest broadcast on the account
+  viewers?: number;
+  title?: string;
+  startedAt?: number; // epoch ms
+  detail?: string;
+};
+```
+Only the X connector publishes `platform.live` today; it has no chat.
 
 ## OBS
 | type | payload |
@@ -65,6 +79,24 @@ type ChatMessage = {
 | `obs.cmd.startStream` | `{}` |
 | `obs.cmd.stopStream` | `{}` |
 | `obs.cmd.setSourceVisible` | `{ scene: string; source: string; visible: boolean }` |
+| `obs.settings` | `{ url: string; passwordSet: boolean }` (retained; the password itself is never sent) |
+| `obs.sources.list` | `{ scene: string; sources: { name: string; visible: boolean }[] }` (retained; current program scene, top source first) |
+| `obs.cmd.reconnect` | `{}` (drop the OBS connection and connect again now) |
+| `obs.cmd.refresh` | `{}` (re-read scenes, sources and stream state from OBS) |
+
+## Stream destinations
+RTMP targets the streamer pastes once. OBS still does all streaming; the hub only stores them and can write one into OBS's main stream output.
+```ts
+type StreamDestination = { id: string; label: string; server: string /* rtmp(s):// */; key: string };
+```
+| type | payload |
+|---|---|
+| `destinations.list` | `{ destinations: StreamDestination[]; inObs: string \| null; detail?: string }` (retained; `inObs` is the destination OBS's main output uses, `detail` the last error) |
+| `destinations.cmd.save` | `StreamDestination` (insert or replace by id) |
+| `destinations.cmd.remove` | `{ id: string }` |
+| `destinations.cmd.useInObs` | `{ id: string }` (refused while OBS is streaming) |
+
+`destinations.list` carries stream keys: only the dashboard receives it, and it must never be forwarded to modules (M4). `destinations.cmd.*` is never forwarded to WebSocket clients.
 
 ## Show
 | type | payload |
@@ -93,6 +125,8 @@ type ConnectionState = {
 | `connections.cmd.connect` | `{ platform: Platform }` |
 | `connections.cmd.disconnect` | `{ platform: Platform }` |
 | `connections.cmd.setYoutubeClient` | `{ clientId: string; clientSecret: string }` |
+| `connections.cmd.setXClient` | `{ clientId: string }` (X public OAuth 2.0 client; PKCE, no secret) |
+| `connections.cmd.setObs` | `{ url: string /* ws(s):// */; password?: string }` (omit `password` to keep the saved one; saved settings override `.env`) |
 
 `connections.cmd.*` events can carry secrets: the hub handles them internally and **never forwards them to WebSocket clients**. They are not kept in history.
 
@@ -184,7 +218,6 @@ type AudioState = {
 | `audio.cmd.listDevices` | `{}` refresh `audio.devices` |
 | `audio.cmd.nest` | `{ scene? }` add the `streamhub mics` scene to `scene`, or to every scene |
 
-
 ## Module events
 Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`.
 
@@ -199,6 +232,6 @@ Hub → client: envelopes, plus
 - `{ "op": "error", "code": "bad_json"|"bad_op"|"bad_payload"|"forbidden", "message": string }`; the connection stays open.
 - `{ "op": "history-result", "reqId": string, "events": Envelope[] }`
 
-**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `relay.connection`, `platform.status` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state` and `audio.devices` that match the new topics, oldest first. A reloaded dashboard is correct at once.
+**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `obs.settings`, `obs.sources.list`, `destinations.list`, `relay.connection`, `platform.status` and `platform.live` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state` and `audio.devices` that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
-**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*` and `audio.cmd.*`, and never receive `camera.driver.*`.
+**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*` and `audio.cmd.*`, and never receive `camera.driver.*`.

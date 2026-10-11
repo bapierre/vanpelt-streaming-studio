@@ -5,6 +5,7 @@ import type {
   Envelope,
   EventPayload,
   Platform,
+  PlatformLive,
   StreamState,
 } from '@streamhub/shared';
 
@@ -17,9 +18,13 @@ export type DashboardState = {
   currentScene: string | null;
   stream: { state: StreamState; startedAt?: number };
   platforms: Partial<Record<Platform, { status: ConnectorStatus; detail?: string }>>;
+  live: Partial<Record<Platform, PlatformLive>>;
   chat: ChatMessage[];
   featuredId: string | null;
   connections: Partial<Record<Platform, ConnectionState>>;
+  obsSettings: EventPayload<'obs.settings'> | null;
+  sources: EventPayload<'obs.sources.list'> | null;
+  destinations: EventPayload<'destinations.list'>;
 };
 
 export type Action =
@@ -34,9 +39,13 @@ export const initialState: DashboardState = {
   currentScene: null,
   stream: { state: 'stopped' },
   platforms: {},
+  live: {},
   chat: [],
   featuredId: null,
   connections: {},
+  obsSettings: null,
+  sources: null,
+  destinations: { destinations: [], inObs: null },
 };
 
 export function reduce(state: DashboardState, action: Action): DashboardState {
@@ -65,12 +74,22 @@ export function reduce(state: DashboardState, action: Action): DashboardState {
       return { ...state, currentScene: (payload as EventPayload<'obs.scene.changed'>).scene };
     case 'obs.stream.state':
       return { ...state, stream: payload as EventPayload<'obs.stream.state'> };
+    case 'obs.settings':
+      return { ...state, obsSettings: payload as EventPayload<'obs.settings'> };
+    case 'obs.sources.list':
+      return { ...state, sources: payload as EventPayload<'obs.sources.list'> };
+    case 'destinations.list':
+      return { ...state, destinations: payload as EventPayload<'destinations.list'> };
     case 'platform.status': {
       const p = payload as EventPayload<'platform.status'>;
       return {
         ...state,
         platforms: { ...state.platforms, [p.platform]: { status: p.status, detail: p.detail } },
       };
+    }
+    case 'platform.live': {
+      const p = payload as PlatformLive;
+      return { ...state, live: { ...state.live, [p.platform]: p } };
     }
     case 'chat.message': {
       const m = payload as ChatMessage;

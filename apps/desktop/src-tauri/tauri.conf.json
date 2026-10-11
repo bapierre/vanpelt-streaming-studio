@@ -11,7 +11,15 @@
   "app": {
     "windows": [],
     "security": {
-      "capabilities": []
+      "capabilities": [
+        {
+          "identifier": "window-drag",
+          "description": "Lets the dashboard toolbar move and zoom the window; nothing else is exposed to the page.",
+          "windows": ["main"],
+          "remote": { "urls": ["http://127.0.0.1:*"] },
+          "permissions": ["core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize"]
+        }
+      ]
     }
   },
   "bundle": {

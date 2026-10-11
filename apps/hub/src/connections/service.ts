@@ -3,11 +3,14 @@ import type { Bus } from '../bus/bus';
 import type { TwitchAuth } from '../connectors/twitch/auth';
 import type { YouTubeApi } from '../connectors/youtube/api';
 import type { YouTubeAuth } from '../connectors/youtube/auth';
+import type { XApi } from '../connectors/x/api';
+import type { XAuth } from '../connectors/x/auth';
 import { describeError } from '../util/errors';
 
 const KICK_NOTE = 'Kick arrives with the relay (M3).';
 const TWITCH_SETUP = 'Set TWITCH_CLIENT_ID in .env (see docs/setup/twitch.md), then restart streamhub.';
 const YOUTUBE_SETUP = 'Add your Google OAuth client first (see docs/setup/youtube.md).';
+const X_SETUP = 'Add your X app client ID first (see docs/setup/x.md).';
 
 export type ConnectionsDeps = {
   bus: Bus;
@@ -17,6 +20,11 @@ export type ConnectionsDeps = {
     'clientConfigured' | 'connected' | 'account' | 'setClient' | 'setAccount' | 'beginAuth' | 'completeAuth' | 'accessToken' | 'clearTokens'
   >;
   youtubeApi: Pick<YouTubeApi, 'myChannelTitle'>;
+  x: Pick<
+    XAuth,
+    'clientConfigured' | 'connected' | 'account' | 'setClient' | 'setAccount' | 'beginAuth' | 'completeAuth' | 'accessToken' | 'clearTokens'
+  >;
+  xApi: Pick<XApi, 'me'>;
   restart(platform: Platform): void;
   halt(platform: Platform): Promise<void>;
 };
@@ -34,14 +42,15 @@ export class ConnectionsService {
       t ? { platform: 'twitch', state: 'connected', account: t.login } : { platform: 'twitch', state: 'disconnected', ...(twitch ? {} : { detail: TWITCH_SETUP }) },
     );
     this.state(this.youtubeIdle());
+    this.state(this.xIdle());
     this.state({ platform: 'kick', state: 'disconnected', detail: KICK_NOTE });
     this.deps.bus.subscribe(['connections.cmd.'], (e) => void this.handle(e));
   }
 
-  /** A connector stopped because the user must reconnect: show it on the Connections page. */
-  authLost(platform: 'twitch' | 'youtube', detail: string) {
+  /** A connector stopped because the user must reconnect: show it in Settings → Platforms. */
+  authLost(platform: 'twitch' | 'youtube' | 'x', detail: string) {
     this.state(
-      platform === 'youtube'
+      platform === 'youtube' || platform === 'x'
         ? { platform, state: 'error', clientConfigured: true, detail }
         : { platform, state: 'error', detail },
     );
@@ -68,6 +77,27 @@ export class ConnectionsService {
     }
   }
 
+  async handleXCallback(query: Record<string, string | undefined>): Promise<string> {
+    const { x } = this.deps;
+    try {
+      await x.completeAuth({ code: query.code, state: query.state, error: query.error });
+      const user = await this.deps.xApi.me(await x.accessToken()).catch(() => undefined);
+      await x.setAccount(user);
+      if (!x.connected()) {
+        // Disconnected while the sign-in was finishing: the disconnect wins.
+        this.state(this.xIdle());
+        return 'X was disconnected before sign-in finished.';
+      }
+      this.state(this.xIdle());
+      this.deps.restart('x');
+      return 'X is connected. You can close this tab and go back to streamhub.';
+    } catch (err) {
+      const detail = describeError(err);
+      this.state({ platform: 'x', state: 'error', clientConfigured: x.clientConfigured(), detail });
+      return `X connection failed: ${detail}`;
+    }
+  }
+
   private async handle(e: Envelope) {
     try {
       switch (e.type) {
@@ -82,6 +112,13 @@ export class ConnectionsService {
           this.state(this.youtubeIdle());
           return;
         }
+        case 'connections.cmd.setXClient': {
+          const p = e.payload as EventPayload<'connections.cmd.setXClient'>;
+          await this.deps.halt('x');
+          await this.deps.x.setClient(p.clientId);
+          this.state(this.xIdle());
+          return;
+        }
       }
     } catch (err) {
       console.warn(`[connections] ${e.type} failed: ${describeError(err)}`);
@@ -91,6 +128,7 @@ export class ConnectionsService {
   private async connect(platform: Platform) {
     if (platform === 'kick') return this.state({ platform: 'kick', state: 'error', detail: KICK_NOTE });
     if (platform === 'youtube') return this.connectYouTube();
+    if (platform === 'x') return this.connectX();
     return this.connectTwitch();
   }
 
@@ -121,6 +159,14 @@ export class ConnectionsService {
     this.state({ platform: 'youtube', state: 'pending', clientConfigured: true, authUrl: youtube.beginAuth() });
   }
 
+  private connectX() {
+    const { x } = this.deps;
+    if (!x.clientConfigured()) {
+      return this.state({ platform: 'x', state: 'error', clientConfigured: false, detail: X_SETUP });
+    }
+    this.state({ platform: 'x', state: 'pending', clientConfigured: true, authUrl: x.beginAuth() });
+  }
+
   private async disconnect(platform: Platform) {
     if (platform === 'kick') return;
     if (platform === 'twitch') this.twitchAbort?.abort();
@@ -128,6 +174,10 @@ export class ConnectionsService {
     if (platform === 'twitch') {
       await this.deps.twitch?.clear();
       return this.state({ platform: 'twitch', state: 'disconnected', ...(this.deps.twitch ? {} : { detail: TWITCH_SETUP }) });
+    }
+    if (platform === 'x') {
+      await this.deps.x.clearTokens();
+      return this.state(this.xIdle());
     }
     await this.deps.youtube.clearTokens();
     this.state(this.youtubeIdle());
@@ -140,6 +190,15 @@ export class ConnectionsService {
       return { platform: 'youtube', state: 'connected', clientConfigured: true, ...(account ? { account } : {}) };
     }
     return { platform: 'youtube', state: 'disconnected', clientConfigured: youtube.clientConfigured() };
+  }
+
+  private xIdle(): ConnectionState {
+    const { x } = this.deps;
+    if (x.connected()) {
+      const account = x.account();
+      return { platform: 'x', state: 'connected', clientConfigured: true, ...(account ? { account } : {}) };
+    }
+    return { platform: 'x', state: 'disconnected', clientConfigured: x.clientConfigured() };
   }
 
   private state(payload: ConnectionState) {

@@ -46,7 +46,7 @@ Reconnect with exponential backoff (1s → 60s cap, jitter).
 Platform APIs change. Before writing each connector, the agent must read the current official docs and confirm: auth flow + scopes, how to receive chat in real time, rate limits/quota, and ToS constraints. Record findings in `docs/connectors/<platform>.md`.
 
 ### 3. OBS bridge (`apps/hub/src/obs`)
-- Uses `obs-websocket-js` against OBS 28+ built-in websocket server (`OBS_WS_URL`, `OBS_WS_PASSWORD`).
+- Uses `obs-websocket-js` against OBS 28+ built-in websocket server (`OBS_WS_URL`, `OBS_WS_PASSWORD`; an address and password saved from the dashboard's Settings → OBS go to `.streamhub/secrets.json` and win over `.env`).
 - Exposes commands on the bus (dashboard/sequencer publish these):
   - `obs.cmd.setScene { scene }`
   - `obs.cmd.startStream {}` / `obs.cmd.stopStream {}`

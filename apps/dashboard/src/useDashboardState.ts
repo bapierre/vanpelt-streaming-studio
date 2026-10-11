@@ -22,6 +22,7 @@ export function useDashboardState(client: HubClient): DashboardState {
       client.on('chat.', onEvent),
       client.on('show.feature.', onEvent),
       client.on('connections.', onEvent),
+      client.on('destinations.', onEvent),
     ];
     return () => offs.forEach((off) => off());
   }, [client]);

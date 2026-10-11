@@ -66,3 +66,37 @@ describe('YouTube OAuth callback', () => {
     expect(logged).not.toContain('/oauth/youtube/callback');
   });
 });
+describe('X OAuth callback', () => {
+  it('passes the query to the callback handler without logging the code', async () => {
+    let logged = '';
+    const seen: unknown[] = [];
+    const app = await createServer({
+      bus: new Bus(),
+      port: 0,
+      dev: false,
+      dashboardDir: '/nonexistent',
+      logger: { level: 'info', stream: { write: (line: string) => void (logged += line) } },
+      xCallback: async (q) => {
+        seen.push(q);
+        return 'X is connected. You can close this tab.';
+      },
+    });
+    await app.inject({ method: 'GET', url: '/health' });
+    const res = await app.inject({ method: 'GET', url: '/oauth/x/callback?code=SECRETCODE&state=SECRETSTATE' });
+    await app.close();
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/plain');
+    expect(res.body).toBe('X is connected. You can close this tab.');
+    expect(seen).toEqual([{ code: 'SECRETCODE', state: 'SECRETSTATE' }]);
+    expect(logged).toContain('/health');
+    expect(logged).not.toContain('SECRETCODE');
+    expect(logged).not.toContain('/oauth/x/callback');
+  });
+
+  it('is not served when no X handler is configured', async () => {
+    const app = await createServer({ bus: new Bus(), port: 0, dev: false, dashboardDir: '/nonexistent', logger: false });
+    const res = await app.inject({ method: 'GET', url: '/oauth/x/callback?code=a' });
+    await app.close();
+    expect(res.statusCode).toBe(404);
+  });
+});

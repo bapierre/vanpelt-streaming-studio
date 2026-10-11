@@ -11,6 +11,7 @@ export type ServerOptions = {
   dashboardDir: string;
   logger?: FastifyServerOptions['logger'];
   youtubeCallback?: (query: Record<string, string | undefined>) => Promise<string>;
+  xCallback?: (query: Record<string, string | undefined>) => Promise<string>;
   authorizeDriver?: AuthorizeDriver;
 };
 
@@ -28,6 +29,13 @@ export async function createServer(opts: ServerOptions): Promise<FastifyInstance
     const callback = opts.youtubeCallback;
     // The query carries a one-time auth code, so this route must never be request-logged.
     app.get('/oauth/youtube/callback', { logLevel: 'silent' }, async (req, reply) =>
+      reply.type('text/plain; charset=utf-8').send(await callback(req.query as Record<string, string | undefined>)),
+    );
+  }
+
+  if (opts.xCallback) {
+    const callback = opts.xCallback;
+    app.get('/oauth/x/callback', { logLevel: 'silent' }, async (req, reply) =>
       reply.type('text/plain; charset=utf-8').send(await callback(req.query as Record<string, string | undefined>)),
     );
   }
