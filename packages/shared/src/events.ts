@@ -108,7 +108,6 @@ export const EventSchemas = {
     seconds: z.number().int().min(3).max(30).optional(),
   }),
   'audio.cmd.setTarget': z.object({ targetDb: z.number().min(-40).max(-6) }),
-  'audio.cmd.record': z.object({ action: z.enum(['start', 'stop']) }),
   'audio.cmd.listDevices': Empty,
   /** Put the mics scene into `scene`, or into every scene when omitted, so the mics are heard there. */
   'audio.cmd.nest': z.object({ scene: z.string().min(1).optional() }),

@@ -135,7 +135,7 @@ OBS-side control keys: `obs.brightness`, `obs.contrast`, `obs.saturation`, `obs.
 `camera.driver.*` events are only exchanged between the hub and the driver that owns the camera. Drivers connect to `/ws?driver=<moduleId>&token=<token>` without an Origin header; the token is handed to the driver process by the hub at launch. A driver may publish only `camera.driver.state` for its own camera ids and receives only `camera.driver.cmd.set` for them.
 
 ## Audio
-Each mic is an OBS audio input listed in `.streamhub/audio.json`. Audio never passes through the hub: OBS mixes, filters and records it, and the hub controls OBS. Track 1 carries the stream mix; each of the first five mics is also routed alone to tracks 2–6 so recordings keep every voice separate. Later mics are mixed and tunable but get no isolated track (`track: null`). Setup: `docs/audio/mics.md`.
+Each mic is an OBS audio input listed in `.streamhub/audio.json`. Audio never passes through the hub: OBS mixes, filters and records it, and the hub controls OBS. Starting and stopping the recording belongs to the recording session (`recording.*`); the audio service only decides which tracks OBS records. Track 1 carries the stream mix; each of the first five mics is also routed alone to tracks 2–6 so recordings keep every voice separate. Later mics are mixed and tunable but get no isolated track (`track: null`). Setup: `docs/audio/mics.md`.
 ```ts
 type MicFilters = {                                  // a chain of `streamhub <name>` filters on the input, in this order
   gain:       { enabled; db };                       // -30..30
@@ -168,7 +168,7 @@ type AudioState = {
   targetDb: number;            // speech level the sound check aims for, dBFS (-40..-6, default -20)
   recordTracks: number[];      // tracks OBS records
   recordDetail?: string;       // why the recording tracks could not be set
-  record: { state: 'stopped' | 'starting' | 'recording' | 'stopping'; startedAt?; lastFile?; detail? };
+  tracksPending: boolean;      // OBS is recording; track changes apply to the next recording
 };
 ```
 | type | payload |
@@ -181,7 +181,6 @@ type AudioState = {
 | `audio.cmd.remove` | `{ id }` stop managing the mic (the OBS input and its filters stay) |
 | `audio.cmd.soundcheck` | `{ id, action: 'start' \| 'cancel', seconds?: 3..30 }` measure speech and set the gain to `targetDb` |
 | `audio.cmd.setTarget` | `{ targetDb }` |
-| `audio.cmd.record` | `{ action: 'start' \| 'stop' }` OBS local recording |
 | `audio.cmd.listDevices` | `{}` refresh `audio.devices` |
 | `audio.cmd.nest` | `{ scene? }` add the `streamhub mics` scene to `scene`, or to every scene |
 

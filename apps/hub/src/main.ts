@@ -1,6 +1,8 @@
 import { config as loadDotenv } from 'dotenv';
-import OBSWebSocket from 'obs-websocket-js';
+import OBSWebSocket, { EventSubscription } from 'obs-websocket-js';
 import { WebSocket } from 'ws';
+import { loadAudioConfig, saveAudioConfig } from './audio/config';
+import { AudioService } from './audio/service';
 import { Bus } from './bus/bus';
 import { loadCameras } from './cameras/config';
 import { discoverDrivers, DriverHost } from './cameras/drivers';
@@ -68,6 +70,8 @@ const obs = new ObsBridge({
   client: new OBSWebSocket() as unknown as ObsClient,
   url: cfg.obsUrl,
   password: cfg.obsPassword,
+  // Mixer meters and "is this mic on air" are high-volume events OBS only sends on request.
+  eventSubscriptions: EventSubscription.All | EventSubscription.InputVolumeMeters | EventSubscription.InputActiveStateChanged,
 });
 
 const cameraConfigs = await loadCameras(paths.cameras);
@@ -77,6 +81,12 @@ const cameras = new CameraService({
   obs,
   cameras: cameraConfigs,
   installedDrivers: new Set(drivers.keys()),
+});
+const audio = new AudioService({
+  bus,
+  obs,
+  config: await loadAudioConfig(paths.audio),
+  save: (c) => saveAudioConfig(paths.audio, c),
 });
 const driverHost = new DriverHost({
   drivers,
@@ -104,6 +114,7 @@ try {
   throw err;
 }
 cameras.start();
+audio.start();
 obs.start();
 connections.start();
 manager.startAll();
@@ -115,6 +126,7 @@ const shutdown = async () => {
   shuttingDown = true;
   setTimeout(() => process.exit(1), 3000).unref();
   cameras.stop();
+  audio.stop();
   await Promise.all([obs.stop(), manager.stopAll(), driverHost.stop()]);
   await app.close();
   process.exit(0);

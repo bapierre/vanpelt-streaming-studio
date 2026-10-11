@@ -26,6 +26,7 @@ describe('runtimePaths', () => {
       env: join('/app/data', '.env'),
       secrets: join('/app/data', '.streamhub/secrets.json'),
       cameras: join('/app/data', '.streamhub/cameras.json'),
+      audio: join('/app/data', '.streamhub/audio.json'),
       modules: '/app/resources/modules',
       dashboard: '/app/resources/dashboard',
       proto: '/app/resources/stream_list.proto',

@@ -95,15 +95,6 @@ export const MicStateSchema = z.object({
 });
 export type MicState = z.infer<typeof MicStateSchema>;
 
-export const RecordStateSchema = z.object({
-  state: z.enum(['stopped', 'starting', 'recording', 'stopping']),
-  startedAt: z.number().optional(),
-  /** File of the last finished recording. */
-  lastFile: z.string().optional(),
-  detail: z.string().optional(),
-});
-export type RecordState = z.infer<typeof RecordStateSchema>;
-
 export const AudioStateSchema = z.object({
   mics: z.array(MicStateSchema).max(32),
   /** Speech level the sound check aims for, dBFS. */
@@ -112,7 +103,8 @@ export const AudioStateSchema = z.object({
   recordTracks: z.array(z.number().int().min(1).max(6)),
   /** Set when the recording tracks could not be configured. */
   recordDetail: z.string().optional(),
-  record: RecordStateSchema,
+  /** OBS is recording: OBS reads track settings when a recording starts, so changes wait for the next one. */
+  tracksPending: z.boolean(),
 });
 export type AudioState = z.infer<typeof AudioStateSchema>;
 
