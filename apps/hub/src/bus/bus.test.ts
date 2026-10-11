@@ -125,6 +125,13 @@ describe('Bus', () => {
       ['gopro', 'streaming'],
     ]);
   });
+  it('retains the latest headsets state', () => {
+    const bus = new Bus();
+    const state = (plugin: boolean | null) => ({ plugin, outputs: [], sources: [], headsets: [] });
+    bus.publish({ type: 'headsets.state', payload: state(null), source: 'headsets' });
+    bus.publish({ type: 'headsets.state', payload: state(true), source: 'headsets' });
+    expect(bus.retainedFor(['headsets.']).map((e) => e.payload)).toEqual([state(true)]);
+  });
   const msg = (id: string, platform: 'twitch' | 'youtube', authorId: string) => ({
     type: 'chat.message',
     payload: chatMessage({ id, platform, author: { id: authorId, name: authorId, roles: [] } }),

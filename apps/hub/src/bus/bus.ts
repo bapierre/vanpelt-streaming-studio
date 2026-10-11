@@ -19,6 +19,7 @@ const RETAINED_TYPES = new Set([
   'audio.state',
   'audio.devices',
   'recording.state',
+  'headsets.state',
 ]);
 
 /** Retained once per value of the named payload field. */

@@ -8,6 +8,13 @@ import {
   MicPatchSchema,
 } from './audio';
 import { CameraDriverStateSchema, CameraIdSchema, CameraSetSchema, CameraStateSchema } from './cameras';
+import {
+  HeadsetAddSchema,
+  HeadsetIdSchema,
+  HeadsetPatchSchema,
+  HeadsetSendPatchSchema,
+  HeadsetsStateSchema,
+} from './headsets';
 import { RecordingSessionSchema } from './recording';
 
 export const PlatformSchema = z.enum(['twitch', 'youtube', 'kick', 'x']);
@@ -160,6 +167,12 @@ export const EventSchemas = {
   'audio.cmd.listDevices': Empty,
   /** Put the mics scene into `scene`, or into every scene when omitted, so the mics are heard there. */
   'audio.cmd.nest': z.object({ scene: z.string().min(1).optional() }),
+  'headsets.state': HeadsetsStateSchema,
+  'headsets.cmd.add': HeadsetAddSchema,
+  'headsets.cmd.update': HeadsetPatchSchema,
+  'headsets.cmd.remove': z.object({ id: HeadsetIdSchema }),
+  'headsets.cmd.setSend': HeadsetSendPatchSchema,
+  'headsets.cmd.listOutputs': Empty,
 } as const;
 
 export type KnownEventType = keyof typeof EventSchemas;

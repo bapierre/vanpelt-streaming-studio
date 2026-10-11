@@ -249,6 +249,15 @@ describe('camera drivers', () => {
     await sync(c);
     expect(seen).toEqual([{ id: 'host', muted: true }]);
   });
+
+  it('lets dashboards send headset commands', async () => {
+    const seen: unknown[] = [];
+    bus.subscribe(['headsets.cmd.'], (e) => seen.push(e.payload));
+    const c = await open(ORIGIN);
+    c.send({ op: 'publish', event: { type: 'headsets.cmd.setSend', payload: { id: 'guest', source: 'mic:host', on: false } } });
+    await sync(c);
+    expect(seen).toEqual([{ id: 'guest', source: 'mic:host', on: false }]);
+  });
 });
 
 describe('robustness', () => {

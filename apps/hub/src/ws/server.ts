@@ -18,6 +18,7 @@ export const DASHBOARD_PUBLISHABLE = [
   'destinations.cmd.',
   'audio.cmd.',
   'recording.cmd.',
+  'headsets.cmd.',
 ];
 /** Events that may carry secrets: handled inside the hub, never sent to any client. */
 export const NEVER_FORWARDED = ['connections.cmd.', 'destinations.cmd.'];
