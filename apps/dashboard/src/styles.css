@@ -350,3 +350,17 @@ input:focus { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transpare
 .hp-cell { min-width: 220px; }
 .hp-cell.off output { color: var(--tertiary); }
 .hp-cell .control output { min-width: 4.5em; font-size: 11px; }
+
+/* Alerts and goals */
+.settings-sub { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--secondary); }
+.overlay-url { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.overlay-url code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 5px; background: var(--fill); }
+.alert-toggle { display: inline-flex; align-items: center; gap: 6px; }
+.alert-toggle input { width: auto; accent-color: var(--accent); }
+.alert-template { flex: 1; min-width: 200px; }
+.alert-number { width: 90px; }
+.alert-currency { width: 56px; text-transform: uppercase; }
+.alert-recent { list-style: none; margin: 0; padding: 0; }
+.alert-recent-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-platforms { margin: 0; padding: 0; border: 0; }
+.goal-platforms legend { float: left; width: 120px; padding: 0; }

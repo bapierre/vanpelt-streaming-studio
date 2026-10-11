@@ -1,11 +1,13 @@
 import type { HubClient } from '@streamhub/overlay-sdk';
 import type { ChatMessage } from '@streamhub/shared';
+import { AlertsPanel, type AlertActions } from './components/AlertsPanel';
 import { Mixer, WithLevels, type AudioActions } from './components/AudioPanel';
 import { CamerasPanel, CameraSwitcher } from './components/CamerasPanel';
 import { ChatPanel } from './components/ChatPanel';
 import { ChatTab } from './components/ChatTab';
 import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { DestinationsPanel } from './components/DestinationsPanel';
+import { GoalsPanel, type GoalActions } from './components/GoalsPanel';
 import type { HeadsetActions } from './components/HeadsetMatrix';
 import { ObsSettings, ObsTools } from './components/Obs';
 import { PlatformLiveBadge } from './components/PlatformLive';
@@ -19,6 +21,7 @@ import { StatusBar } from './components/StatusBar';
 import { StreamControls } from './components/StreamControls';
 import { panelId, tabId, TabBar, useTabs } from './components/Tabs';
 import { usePrefs } from './prefs';
+import { useAlerts } from './useAlerts';
 import { useAudio } from './useAudio';
 import { useCameras } from './useCameras';
 import { useDashboardState } from './useDashboardState';
@@ -32,6 +35,7 @@ export function App({ client }: { client: HubClient }) {
   const cameras = useCameras(client);
   const recording = useRecording(client);
   const headsets = useHeadsets(client);
+  const alerts = useAlerts(client);
   const takeCamera = (id: string) => client.publish('camera.cmd.take', { id });
   const audio = useAudio(client);
   const audioActions: AudioActions = {
@@ -49,6 +53,18 @@ export function App({ client }: { client: HubClient }) {
     onRemove: (id) => client.publish('headsets.cmd.remove', { id }),
     onSetSend: (patch) => client.publish('headsets.cmd.setSend', patch),
     onListOutputs: () => client.publish('headsets.cmd.listOutputs'),
+  };
+  const alertActions: AlertActions = {
+    onTest: (kind) => client.publish('alert.cmd.test', { kind }),
+    onReplay: (id) => client.publish('alert.cmd.replay', { id }),
+    onSkip: () => client.publish('alert.cmd.skip', {}),
+    onPause: (paused) => client.publish('alert.cmd.pause', { paused }),
+    onSetKind: (patch) => client.publish('alert.cmd.setKind', patch),
+  };
+  const goalActions: GoalActions = {
+    onSave: (goal) => client.publish('goal.cmd.save', goal),
+    onRemove: (id) => client.publish('goal.cmd.remove', { id }),
+    onReset: (id) => client.publish('goal.cmd.reset', { id }),
   };
   const obsReady = state.hubConnected && state.obs.connected;
   const live = state.stream.state !== 'stopped';
@@ -168,6 +184,27 @@ export function App({ client }: { client: HubClient }) {
                     onSetYoutubeClient={(clientId, clientSecret) => client.publish('connections.cmd.setYoutubeClient', { clientId, clientSecret })}
                     onSetXClient={(clientId) => client.publish('connections.cmd.setXClient', { clientId })}
                   />
+                ),
+              },
+              {
+                id: 'alerts',
+                label: 'Alerts',
+                content: (
+                  <AlertsPanel
+                    config={alerts.config}
+                    recent={alerts.recent}
+                    modules={alerts.modules}
+                    twitchDetail={state.platforms.twitch?.detail}
+                    disabled={!state.hubConnected}
+                    actions={alertActions}
+                  />
+                ),
+              },
+              {
+                id: 'goals',
+                label: 'Goals',
+                content: (
+                  <GoalsPanel goals={alerts.goals?.goals ?? null} modules={alerts.modules} disabled={!state.hubConnected} actions={goalActions} />
                 ),
               },
               {
