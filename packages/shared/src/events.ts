@@ -1,5 +1,17 @@
 import { z } from 'zod';
 import {
+  AlertKindPatchSchema,
+  AlertKindSchema,
+  AlertRecentSchema,
+  AlertSchema,
+  AlertShowSchema,
+  AlertsConfigSchema,
+  GoalIdSchema,
+  GoalInputSchema,
+  GoalsStateSchema,
+  PlatformTotalsSchema,
+} from './alerts';
+import {
   AudioDevicesSchema,
   AudioLevelsSchema,
   AudioStateSchema,
@@ -173,6 +185,22 @@ export const EventSchemas = {
   'headsets.cmd.remove': z.object({ id: HeadsetIdSchema }),
   'headsets.cmd.setSend': HeadsetSendPatchSchema,
   'headsets.cmd.listOutputs': Empty,
+  'platform.totals': PlatformTotalsSchema,
+  'alert.event': AlertSchema,
+  'alert.show': AlertShowSchema,
+  'alert.hide': z.object({ id: z.string() }),
+  'alert.recent': AlertRecentSchema,
+  'alert.config': AlertsConfigSchema,
+  'alert.cmd.test': z.object({ kind: AlertKindSchema }),
+  'alert.cmd.replay': z.object({ id: z.string().min(1) }),
+  'alert.cmd.skip': Empty,
+  'alert.cmd.pause': z.object({ paused: z.boolean() }),
+  'alert.cmd.setKind': AlertKindPatchSchema,
+  'goal.state': GoalsStateSchema,
+  'goal.cmd.save': GoalInputSchema,
+  'goal.cmd.remove': z.object({ id: GoalIdSchema }),
+  /** Starts the count again: from zero for a `stream` goal, and for a `total` tips goal. */
+  'goal.cmd.reset': z.object({ id: GoalIdSchema }),
 } as const;
 
 export type KnownEventType = keyof typeof EventSchemas;

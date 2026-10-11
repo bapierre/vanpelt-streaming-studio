@@ -1,3 +1,4 @@
+export * from './alerts';
 export * from './audio';
 export * from './cameras';
 export * from './envelope';
