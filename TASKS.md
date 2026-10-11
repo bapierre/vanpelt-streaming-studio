@@ -10,6 +10,7 @@ The approved design is `docs/superpowers/specs/2026-10-01-streamhub-base-design.
 ## After the base
 - [x] Initial Tauri desktop shell (bundled local hub + existing dashboard, `docs/desktop.md`); keychain storage and signed distribution deferred
 - [x] Cameras: per-camera scene switching, OBS-side picture controls, pluggable driver processes, GoPro HERO12 driver (`docs/cameras/`); hardware acceptance pending, desktop builds do not ship drivers yet, no network discovery
+- [x] Multi-camera recording: one take = program recording (mix + isolated mic tracks) + one file per camera via OBS Source Record + optional camera-card recording (GoPro), saved-files list, disk space warnings, confirm-to-stop (`docs/setup/recording.md`); live acceptance pending: Source Record on this OBS version, and whether the GoPro records to its card while in webcam mode
 - [x] Mics: one OBS track per mic (up to 5) plus the stream mix, per-mic fader/mute/monitoring/sync/voice filters, automatic sound check to a target level, add mics from devices, split two-person stereo devices, dashboard mixer and meters (`docs/audio/mics.md`); hardware acceptance pending, Mono for split devices must be ticked in OBS by hand
 
 Live-coded modules: chat overlay · featured message · transitions · sequencer · teleprompter · roast-o-meter · karaoke picker · hackathon voting · average-ness score · fake-money bets · chat-triggered sounds.
