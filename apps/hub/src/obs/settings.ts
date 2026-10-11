@@ -48,7 +48,10 @@ export class ObsSettingsService {
 
   private async handle(e: Envelope) {
     const p = e.payload as EventPayload<'connections.cmd.setObs'>;
-    const next: ObsSecrets = { url: p.url, password: p.password ?? this.settings.password };
+    // An omitted password is inherited only while the address is unchanged: a new URL must not
+    // silently receive the password of the old server.
+    const password = p.password ?? (p.url === this.settings.url ? this.settings.password : '');
+    const next: ObsSecrets = { url: p.url, password };
     this.settings = next;
     try {
       await this.deps.store.update((s) => ({ ...s, obs: next }));

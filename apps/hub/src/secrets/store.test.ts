@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,6 +39,17 @@ describe('SecretsStore', () => {
     const store = new SecretsStore(path);
     await store.update((s) => ({ ...s, twitch }));
     expect((await stat(path)).mode & 0o777).toBe(0o600);
+  });
+
+  it.skipIf(process.platform === 'win32')('tightens loose file and directory permissions on load', async () => {
+    await writeRaw(JSON.stringify({ twitch }));
+    await chmod(path, 0o644);
+    await chmod(dirname(path), 0o755);
+    const store = new SecretsStore(path);
+    await store.load();
+    expect(store.get()).toEqual({ twitch });
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    expect((await stat(dirname(path))).mode & 0o777).toBe(0o700);
   });
 
   it('applies concurrent updates in order', async () => {

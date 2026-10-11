@@ -192,6 +192,22 @@ describe('ConnectionsService', () => {
     expect(restart).not.toHaveBeenCalled();
   });
 
+  it('drops non-string query values in the YouTube callback', async () => {
+    youtube.completeAuth!.mockRejectedValue(new Error('nope'));
+    service.start();
+    await service.handleYouTubeCallback({ code: ['a', 'b'], state: 's', error: 42 } as never);
+    expect(youtube.completeAuth).toHaveBeenCalledWith({ code: undefined, state: 's', error: undefined });
+  });
+
+  it('strips control characters and caps provider error text in the YouTube callback', async () => {
+    youtube.completeAuth!.mockRejectedValue(new Error('nope'));
+    service.start();
+    await service.handleYouTubeCallback({ error: 'denied\n\x07' + 'x'.repeat(200), state: 's' });
+    const passed = youtube.completeAuth!.mock.calls[0]![0] as { error?: string };
+    expect(passed.error).toBe('denied' + 'x'.repeat(114));
+    expect(passed.error).toHaveLength(120);
+  });
+
   it('answers Kick with the M3 note', async () => {
     service.start();
     cmd('connections.cmd.connect', { platform: 'kick' });
@@ -348,6 +364,13 @@ describe('ConnectionsService X', () => {
     expect(page).toContain('X connection failed: This sign-in link is invalid or expired.');
     expect(states('x').at(-1)).toMatchObject({ platform: 'x', state: 'error', clientConfigured: true });
     expect(restart).not.toHaveBeenCalled();
+  });
+
+  it('drops non-string query values and tames error text in the X callback', async () => {
+    x.completeAuth!.mockRejectedValue(new Error('nope'));
+    service.start();
+    await service.handleXCallback({ code: 'c', state: ['s', 't'], error: 'bad\x00text' } as never);
+    expect(x.completeAuth).toHaveBeenCalledWith({ code: 'c', state: undefined, error: 'badtext' });
   });
 
   it('does not restart when X was disconnected mid sign-in', async () => {

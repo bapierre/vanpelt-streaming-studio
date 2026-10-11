@@ -153,7 +153,7 @@ export const EventSchemas = {
     clientSecret: z.string().trim().min(1),
   }),
   'connections.cmd.setXClient': z.object({ clientId: z.string().trim().min(1).max(200) }),
-  /** Omit `password` to keep the saved one; an empty string means OBS has no password. */
+  /** Omit `password` to keep the saved one (only while the URL is unchanged); an empty string means OBS has no password. */
   'connections.cmd.setObs': z.object({
     url: z.string().trim().regex(/^wss?:\/\/\S+$/, 'use a ws:// or wss:// URL').max(300),
     password: z.string().max(500).optional(),

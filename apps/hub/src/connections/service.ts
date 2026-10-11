@@ -12,6 +12,15 @@ const TWITCH_SETUP = 'Set TWITCH_CLIENT_ID in .env (see docs/setup/twitch.md), t
 const YOUTUBE_SETUP = 'Add your Google OAuth client first (see docs/setup/youtube.md).';
 const X_SETUP = 'Add your X app client ID first (see docs/setup/x.md).';
 
+/** Fastify's query parser yields arrays for repeated params; only plain strings are usable here. */
+const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+
+/** Provider error text is reflected back to the browser: no control characters, bounded length. */
+const cleanError = (v: unknown): string | undefined => {
+  const s = str(v);
+  return s === undefined ? undefined : [...s].filter((c) => (c >= ' ' && c < '\x7f') || c > '\x9f').join('').slice(0, 120);
+};
+
 export type ConnectionsDeps = {
   bus: Bus;
   twitch: Pick<TwitchAuth, 'tokens' | 'startDeviceFlow' | 'pollDeviceFlow' | 'clear'> | null;
@@ -59,7 +68,7 @@ export class ConnectionsService {
   async handleYouTubeCallback(query: Record<string, string | undefined>): Promise<string> {
     const { youtube } = this.deps;
     try {
-      await youtube.completeAuth({ code: query.code, state: query.state, error: query.error });
+      await youtube.completeAuth({ code: str(query.code), state: str(query.state), error: cleanError(query.error) });
       const title = await this.deps.youtubeApi.myChannelTitle(await youtube.accessToken()).catch(() => undefined);
       await youtube.setAccount(title);
       if (!youtube.connected()) {
@@ -80,7 +89,7 @@ export class ConnectionsService {
   async handleXCallback(query: Record<string, string | undefined>): Promise<string> {
     const { x } = this.deps;
     try {
-      await x.completeAuth({ code: query.code, state: query.state, error: query.error });
+      await x.completeAuth({ code: str(query.code), state: str(query.state), error: cleanError(query.error) });
       const user = await this.deps.xApi.me(await x.accessToken()).catch(() => undefined);
       await x.setAccount(user);
       if (!x.connected()) {

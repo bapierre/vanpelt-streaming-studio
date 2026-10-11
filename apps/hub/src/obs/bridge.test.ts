@@ -267,6 +267,20 @@ describe('ObsBridge', () => {
     await unanswered;
   });
 
+  it('gives up when a scene refresh hangs during connect, and retries', async () => {
+    obs.hanging.add('GetSceneList');
+    bridge.start();
+    await flush();
+    expect(timer.queue.map((e) => e.ms)).toEqual([10_000]);
+    timer.runNext();
+    await flush();
+    expect(payloads('obs.connection')).toEqual([
+      { connected: true },
+      { connected: false, detail: 'OBS did not answer GetSceneList within 10000 ms' },
+    ]);
+    expect(timer.queue.map((e) => e.ms)).toEqual([1000]);
+  });
+
   it('survives OBS rejecting a command', async () => {
     obs.failing.add('StartStream');
     bridge.start();

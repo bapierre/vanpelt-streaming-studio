@@ -7,6 +7,9 @@ export const TWITCH_SCOPES = 'user:read:chat moderator:read:followers channel:re
 
 export class TwitchAuthError extends Error {}
 
+/** Server-supplied seconds, kept sane: a hostile or buggy token endpoint must not set our timers. */
+const clampSeconds = (n: number, max = 31_536_000) => Math.min(max, Math.max(1, Number.isFinite(n) ? n : 1));
+
 /** Twitch definitively rejected the refresh token (HTTP 400/401): the user must reconnect. */
 export class TwitchLoginRejectedError extends TwitchAuthError {}
 
@@ -59,8 +62,8 @@ export class TwitchAuth {
       deviceCode: b.device_code,
       userCode: b.user_code,
       verificationUri: b.verification_uri,
-      intervalMs: b.interval * 1000,
-      expiresAt: this.now() + b.expires_in * 1000,
+      intervalMs: clampSeconds(b.interval, 3600) * 1000,
+      expiresAt: this.now() + clampSeconds(b.expires_in) * 1000,
     };
   }
 

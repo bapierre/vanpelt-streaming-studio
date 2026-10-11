@@ -22,6 +22,9 @@ type Options = {
 
 type TokenResponse = { access_token: string; expires_in: number; refresh_token?: string };
 
+/** Server-supplied seconds, kept sane: a hostile or buggy token endpoint must not set our timers. */
+const clampSeconds = (n: number, max = 31_536_000) => Math.min(max, Math.max(1, Number.isFinite(n) ? n : 1));
+
 /** OAuth 2.0 + PKCE with the streamer's own public ("Native App") client. See docs/connectors/x.md "Auth". */
 export class XAuth {
   private pending: { state: string; verifier: string; expiresAt: number } | null = null;
@@ -91,19 +94,16 @@ export class XAuth {
 
   async completeAuth(query: { code?: string; state?: string; error?: string }): Promise<void> {
     const pending = this.pending;
+    // State first: a forged redirect must not cancel a real sign-in or feed its error text through.
+    if (!pending || query.state !== pending.state || this.now() > pending.expiresAt) {
+      throw new XAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
+    }
     if (query.error) {
       this.pending = null;
       throw new XAuthError(`X sign-in failed: ${query.error}`);
     }
-    if (
-      !pending ||
-      query.state !== pending.state ||
-      this.now() > pending.expiresAt ||
-      !query.code
-    ) {
-      throw new XAuthError(
-        'This sign-in link is invalid or expired. Start again from Settings → Platforms.',
-      );
+    if (!query.code) {
+      throw new XAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
     }
     this.pending = null;
     const generation = this.generation;
@@ -132,7 +132,7 @@ export class XAuth {
           clientId: s.x.clientId,
           accessToken: body.access_token,
           refreshToken: body.refresh_token,
-          expiresAt: this.now() + body.expires_in * 1000,
+          expiresAt: this.now() + clampSeconds(body.expires_in) * 1000,
         },
       };
     });
@@ -207,7 +207,7 @@ export class XAuth {
           ...s.x,
           accessToken: body.access_token,
           refreshToken: body.refresh_token ?? s.x.refreshToken,
-          expiresAt: this.now() + body.expires_in * 1000,
+          expiresAt: this.now() + clampSeconds(body.expires_in) * 1000,
         },
       };
     });

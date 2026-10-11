@@ -111,7 +111,8 @@ export class ObsBridge {
   /**
    * For hub services that need replies from OBS; throws while disconnected. obs-websocket-js never
    * settles a request whose connection drops, which would stall a service's work queue for good, so
-   * the call also rejects when the connection drops or when OBS does not answer in time.
+   * the call also rejects when the connection drops or when OBS does not answer in time. Every
+   * outbound request below goes through here.
    */
   async call(requestType: string, requestData?: object): Promise<unknown> {
     if (!this.connected) throw new Error('OBS is not connected');
@@ -218,7 +219,7 @@ export class ObsBridge {
   }
 
   private async refreshScenes() {
-    const list = (await this.opts.client.call('GetSceneList')) as {
+    const list = (await this.call('GetSceneList')) as {
       currentProgramSceneName: string;
       scenes: ObsScene[];
     };
@@ -232,7 +233,7 @@ export class ObsBridge {
   private async refreshSources() {
     const scene = this.currentScene;
     if (!this.connected || scene === null) return;
-    const { sceneItems } = (await this.opts.client.call('GetSceneItemList', { sceneName: scene })) as {
+    const { sceneItems } = (await this.call('GetSceneItemList', { sceneName: scene })) as {
       sceneItems: ObsSceneItem[];
     };
     if (scene !== this.currentScene) return; // the program scene changed while we waited
@@ -250,7 +251,7 @@ export class ObsBridge {
   }
 
   private async refreshStream() {
-    const status = (await this.opts.client.call('GetStreamStatus')) as {
+    const status = (await this.call('GetStreamStatus')) as {
       outputActive: boolean;
       outputDuration: number;
     };
@@ -280,19 +281,17 @@ export class ObsBridge {
       console.warn(`[obs] ignoring ${e.type}: OBS is not connected`);
       return;
     }
-    const { client } = this.opts;
     try {
-      switch (e.type) {
-        case 'obs.cmd.setScene': {
+      switch (e.type) {        case 'obs.cmd.setScene': {
           const p = e.payload as EventPayload<'obs.cmd.setScene'>;
-          await client.call('SetCurrentProgramScene', { sceneName: p.scene });
+          await this.call('SetCurrentProgramScene', { sceneName: p.scene });
           break;
         }
         case 'obs.cmd.startStream':
-          await client.call('StartStream');
+          await this.call('StartStream');
           break;
         case 'obs.cmd.stopStream':
-          await client.call('StopStream');
+          await this.call('StopStream');
           break;
         case 'obs.cmd.refresh':
           await this.refreshScenes();
@@ -301,11 +300,11 @@ export class ObsBridge {
           break;
         case 'obs.cmd.setSourceVisible': {
           const p = e.payload as EventPayload<'obs.cmd.setSourceVisible'>;
-          const { sceneItemId } = (await client.call('GetSceneItemId', {
+          const { sceneItemId } = (await this.call('GetSceneItemId', {
             sceneName: p.scene,
             sourceName: p.source,
           })) as { sceneItemId: number };
-          await client.call('SetSceneItemEnabled', {
+          await this.call('SetSceneItemEnabled', {
             sceneName: p.scene,
             sceneItemId,
             sceneItemEnabled: p.visible,

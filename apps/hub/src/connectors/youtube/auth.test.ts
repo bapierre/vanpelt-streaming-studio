@@ -62,8 +62,32 @@ describe('YouTubeAuth', () => {
   it('reports a Google error from the callback', async () => {
     const auth = make();
     await auth.setClient('cid', 'secret');
-    auth.beginAuth();
-    await expect(auth.completeAuth({ error: 'access_denied' })).rejects.toThrow('access_denied');
+    const state = new URL(auth.beginAuth()).searchParams.get('state')!;
+    await expect(auth.completeAuth({ error: 'access_denied', state })).rejects.toThrow('access_denied');
+  });
+
+  it('ignores an error redirect whose state does not match, keeping the real sign-in alive', async () => {
+    const fetchFn = fakeFetch(() => json(200, { access_token: 'at', refresh_token: 'rt', expires_in: 3600 }));
+    const auth = make(fetchFn);
+    await auth.setClient('cid', 'secret');
+    const state = new URL(auth.beginAuth()).searchParams.get('state')!;
+    await expect(auth.completeAuth({ error: 'access_denied', state: 'forged' })).rejects.toThrow('invalid or expired');
+    await auth.completeAuth({ code: 'the-code', state });
+    expect(auth.connected()).toBe(true);
+  });
+
+  it('clamps a hostile expires_in from the token endpoint', async () => {
+    let expiresIn = 0;
+    const fetchFn = fakeFetch(() => json(200, { access_token: 'at', refresh_token: 'rt', expires_in: expiresIn }));
+    const auth = make(fetchFn);
+    await auth.setClient('cid', 'secret');
+    const state = new URL(auth.beginAuth()).searchParams.get('state')!;
+    await auth.completeAuth({ code: 'the-code', state });
+    expect(store.get().youtube).toMatchObject({ expiresAt: t + 1000 });
+    // The clamped token is already inside the refresh margin, so the next accessToken() refreshes.
+    expiresIn = 999_999_999_999;
+    await auth.accessToken();
+    expect(store.get().youtube).toMatchObject({ expiresAt: t + 31_536_000_000 });
   });
 
   it('exchanges the code with the verifier and stores tokens', async () => {

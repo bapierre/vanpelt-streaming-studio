@@ -36,6 +36,14 @@ describe('TwitchAuth device flow', () => {
     expect(Object.fromEntries(fetchFn.calls[0]!.form)).toEqual({ client_id: 'cid', scopes: 'user:read:chat moderator:read:followers channel:read:subscriptions' });
   });
 
+  it('clamps hostile device-flow timings from the server', async () => {
+    const fetchFn = fakeFetch(() =>
+      json(200, { device_code: 'dev', expires_in: 999_999_999_999, interval: 0, user_code: 'ABCDEFGH', verification_uri: 'https://www.twitch.tv/activate' }),
+    );
+    const auth = new TwitchAuth({ clientId: 'cid', store, fetchFn, now: () => 1000 });
+    expect(await auth.startDeviceFlow()).toMatchObject({ intervalMs: 1000, expiresAt: 1000 + 31_536_000_000 });
+  });
+
   it('polls until approved, then stores tokens with the validated identity', async () => {
     let polls = 0;
     const fetchFn = fakeFetch(({ url }) => {

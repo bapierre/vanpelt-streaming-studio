@@ -25,6 +25,9 @@ type Options = {
 
 type TokenResponse = { access_token: string; expires_in: number; refresh_token?: string };
 
+/** Server-supplied seconds, kept sane: a hostile or buggy token endpoint must not set our timers. */
+const clampSeconds = (n: number, max = 31_536_000) => Math.min(max, Math.max(1, Number.isFinite(n) ? n : 1));
+
 /** Loopback OAuth + PKCE with the streamer's own Desktop client. See docs/connectors/youtube.md "Auth". */
 export class YouTubeAuth implements TokenSource {
   private pending: { state: string; verifier: string; expiresAt: number } | null = null;
@@ -91,11 +94,15 @@ export class YouTubeAuth implements TokenSource {
 
   async completeAuth(query: { code?: string; state?: string; error?: string }): Promise<void> {
     const pending = this.pending;
+    // State first: a forged redirect must not cancel a real sign-in or feed its error text through.
+    if (!pending || query.state !== pending.state || this.now() > pending.expiresAt) {
+      throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
+    }
     if (query.error) {
       this.pending = null;
       throw new YouTubeAuthError(`Google sign-in failed: ${query.error}`);
     }
-    if (!pending || query.state !== pending.state || this.now() > pending.expiresAt || !query.code) {
+    if (!query.code) {
       throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
     }
     this.pending = null;
@@ -133,7 +140,7 @@ export class YouTubeAuth implements TokenSource {
           ...s.youtube,
           accessToken: body.access_token,
           refreshToken: body.refresh_token,
-          expiresAt: this.now() + body.expires_in * 1000,
+          expiresAt: this.now() + clampSeconds(body.expires_in) * 1000,
         },
       };
     });
@@ -202,7 +209,7 @@ export class YouTubeAuth implements TokenSource {
       written = true;
       return {
         ...s,
-        youtube: { ...s.youtube, accessToken: body.access_token, expiresAt: this.now() + body.expires_in * 1000 },
+        youtube: { ...s.youtube, accessToken: body.access_token, expiresAt: this.now() + clampSeconds(body.expires_in) * 1000 },
       };
     });
     if (!written) throw new YouTubeAuthError('YouTube was disconnected.');

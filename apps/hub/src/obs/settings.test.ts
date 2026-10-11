@@ -56,13 +56,22 @@ describe('ObsSettingsService', () => {
     expect(JSON.stringify(events)).not.toContain('env-pw');
   });
 
-  it('keeps the saved password when none is sent', async () => {
+  it('keeps the saved password when the url is unchanged and none is sent', async () => {
+    const svc = startService();
+    setObs({ url: ENV.url });
+    await svc.idle();
+    expect(store.data.obs).toEqual({ url: ENV.url, password: 'env-pw' });
+    expect(configure).toHaveBeenCalledWith(ENV.url, 'env-pw');
+    expect(settings().at(-1)).toEqual({ url: ENV.url, passwordSet: true });
+  });
+
+  it('drops the saved password when the url changes and none is sent', async () => {
     const svc = startService();
     setObs({ url: 'ws://10.0.0.2:4455' });
     await svc.idle();
-    expect(store.data.obs).toEqual({ url: 'ws://10.0.0.2:4455', password: 'env-pw' });
-    expect(configure).toHaveBeenCalledWith('ws://10.0.0.2:4455', 'env-pw');
-    expect(settings().at(-1)).toEqual({ url: 'ws://10.0.0.2:4455', passwordSet: true });
+    expect(store.data.obs).toEqual({ url: 'ws://10.0.0.2:4455', password: '' });
+    expect(configure).toHaveBeenCalledWith('ws://10.0.0.2:4455', '');
+    expect(settings().at(-1)).toEqual({ url: 'ws://10.0.0.2:4455', passwordSet: false });
   });
 
   it('treats an empty password as no password', async () => {

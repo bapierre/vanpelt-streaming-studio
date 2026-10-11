@@ -65,10 +65,31 @@ describe('XAuth', () => {
   it('reports an X error from the callback', async () => {
     const auth = make();
     await auth.setClient('cid');
-    await signIn(auth);
-    await expect(auth.completeAuth({ error: 'access_denied' })).rejects.toThrow(
+    const state = await signIn(auth);
+    await expect(auth.completeAuth({ error: 'access_denied', state })).rejects.toThrow(
       'X sign-in failed: access_denied',
     );
+  });
+
+  it('ignores an error redirect whose state does not match, keeping the real sign-in alive', async () => {
+    const fetchFn = fakeFetch(() => json(200, { access_token: 'at', refresh_token: 'rt', expires_in: 7200 }));
+    const auth = make(fetchFn);
+    await auth.setClient('cid');
+    const state = await signIn(auth);
+    await expect(auth.completeAuth({ error: 'access_denied', state: 'forged' })).rejects.toThrow(
+      'invalid or expired',
+    );
+    await auth.completeAuth({ code: 'the-code', state });
+    expect(auth.connected()).toBe(true);
+  });
+
+  it('clamps a hostile expires_in from the token endpoint', async () => {
+    const fetchFn = fakeFetch(() => json(200, { access_token: 'at', refresh_token: 'rt', expires_in: 0 }));
+    const auth = make(fetchFn);
+    await auth.setClient('cid');
+    const state = await signIn(auth);
+    await auth.completeAuth({ code: 'the-code', state });
+    expect(store.get().x).toMatchObject({ expiresAt: t + 1000 });
   });
 
   it('exchanges the code as a public client (client_id in the body, no Basic auth)', async () => {
