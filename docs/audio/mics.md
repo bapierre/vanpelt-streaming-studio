@@ -18,7 +18,7 @@ OBS records at most 6 tracks, so up to **5 mics** get an isolated track. A sixth
 
 ## 2. Add the mics in the dashboard
 
-Open **Settings → Audio**:
+Open the **Sound** tab (⌘2):
 
 1. Under **Add a mic**, type who uses it (for example "Host"), pick the device, pick the side, and click **Add mic**. A mic already set up in OBS can be adopted from "Existing OBS inputs" instead.
 2. New inputs go into a scene called **streamhub mics**. Click **Add mics to all scenes** once to put that scene into every scene, so the mics are heard whatever scene is live. A mic that is not in the live scene shows "Not in the live scene".

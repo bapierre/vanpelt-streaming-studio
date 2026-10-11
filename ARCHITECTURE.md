@@ -89,6 +89,7 @@ Step types: `do` (publish an event), `wait` (ms), `waitFor` (event type, optiona
 
 ### 6. Dashboard (`apps/dashboard`)
 Served by the hub at `http://127.0.0.1:4747/`. The Tauri desktop shell (`apps/desktop`) loads the same dashboard from its own bundled hub, with no changes to the event or WebSocket contracts. See `docs/desktop.md` for lifecycle, packaging, and configuration.
+- **Tabs:** Live (scenes, sources, mixer, compact chat), Sound (mic setup, sound check, headset mixes), Chat (full-size, searchable) and Settings (side menu: General, OBS, Platforms, Cameras, Stream keys). ⌘1–4 switch tabs and ⌘, opens Settings. Record, Start stream and the status bar stay visible on every tab. The tab to open on and the chat text size are saved in the browser (`localStorage`), not the hub; Settings is never reopened on its own, so a shared screen does not show it.
 - **Unified chat:** one column, platform color tag + icon, author, text with emotes; filters by platform; click a message → "Feature" (publishes `show.feature.set`).
 - **Scenes:** buttons for every OBS scene, current scene highlighted.
 - **Sequences:** buttons for each sequence, running state, cancel.
@@ -141,6 +142,14 @@ Mics are OBS audio inputs; OBS mixes, filters and records them, and the hub driv
 - `audio.state` (retained) carries every mic's fader, mute, monitoring, sync offset, filters and sound-check result, followed live from OBS events. `audio.levels` (up to 15/s, not retained) comes from OBS's high-volume `InputVolumeMeters` subscription.
 - **Sound check:** fader to 0 dB, dynamics off, measure the median speech level for a few seconds, set the gain filter to reach the target (±20 dB per check), turn dynamics back on.
 - Simulated in tests (`apps/hub/src/testing/fake-obs-audio.ts`); never run against a real OBS in tests. Guide: `docs/audio/mics.md`.
+
+### 12. Headsets (`apps/hub/src/headsets`)
+Per-person headphone mixes, played by OBS through the third-party [Audio Monitor](https://obsproject.com/forum/resources/audio-monitor.1186/) plugin; the hub only keeps the filters in step.
+- Headsets are listed in `.streamhub/headsets.json` (name, output device name, wearer, master level, mute, one send per source). Sources are the mics plus every other OBS audio input.
+- Each send that is on becomes one `streamhub hp <headsetId>` Audio Monitor filter, kept last on its source so it hears the mic filters but not the fader. Its level is `send + master` converted to the plugin's 0–100 % log-fader setting, so levels top out at 0 dB. A send that is off, a muted headset or a muted source disables the filter. Only changed settings are written, so a slider drag does not reopen the output device.
+- On every OBS connect the hub checks the plugin is installed (`no-plugin` otherwise), re-applies every filter, removes filters of deleted headsets, and follows input renames. The audio service ignores these filters.
+- Output devices are listed from `system_profiler SPAudioDataType -json` on macOS; elsewhere the user types the name. A headset whose device is missing says so.
+- Simulated in tests with the same fake OBS as audio. Guide: `docs/audio/headsets.md`.
 
 ## Config & secrets
 - `.env` (gitignored): `HUB_PORT`, `OBS_WS_URL`, `OBS_WS_PASSWORD`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_CHANNEL`, `YOUTUBE_API_KEY` / OAuth creds, `KICK_*`.

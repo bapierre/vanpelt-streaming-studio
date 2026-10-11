@@ -219,6 +219,38 @@ type AudioState = {
 | `audio.cmd.listDevices` | `{}` refresh `audio.devices` |
 | `audio.cmd.nest` | `{ scene? }` add the `streamhub mics` scene to `scene`, or to every scene |
 
+## Headsets
+Each headset is a personal mix played to one output device, listed in `.streamhub/headsets.json`. Audio never passes through the hub: for every source sent to a headset, the hub keeps one `streamhub hp <headsetId>` filter from Exeldro's Audio Monitor plugin (`audio_monitor`) last on that source, so the headset hears it after the mic filters but before the stream fader: moving a fader never changes what a headset hears. A send's level is `db + masterDb`; the plugin can only turn a signal down, so levels top out at 0 dB. A filter is disabled while its send is off, its headset is muted, or its source is muted. Sources are the mics, then any other OBS audio input; new sources join every headset switched on at 0 dB. Removing a headset removes its filters. Setup: `docs/audio/headsets.md`.
+```ts
+type SourceKey = `mic:${string}` | `obs:${string}`;   // mic id, or OBS input name for other audio
+type HeadsetState = {
+  id: string;                  // slug: [a-z0-9-]+
+  name: string;
+  device: string;              // output device name, as the computer lists it
+  owner: string | null;        // mic id of the person wearing it
+  masterDb: number;            // -60..0
+  muted: boolean;
+  status: 'ok' | 'no-plugin' | 'offline';
+  detail?: string;             // e.g. "<device> is not plugged in"
+  sends: Record<SourceKey, { on: boolean; db: number }>;   // db -60..0
+};
+type HeadsetsState = {
+  plugin: boolean | null;      // Audio Monitor is installed in OBS; null until OBS has been asked
+  outputs: string[];           // output devices on this computer; empty when they cannot be listed
+  outputsDetail?: string;
+  sources: { key: SourceKey; name: string; kind: 'mic' | 'obs' }[];
+  headsets: HeadsetState[];    // up to 16
+};
+```
+| type | payload |
+|---|---|
+| `headsets.state` | `HeadsetsState` (retained) |
+| `headsets.cmd.add` | `{ name, device, owner? }` every current source starts switched on at 0 dB |
+| `headsets.cmd.update` | `{ id, name?, device?, owner?, masterDb?, muted? }` |
+| `headsets.cmd.remove` | `{ id }` also removes its filters from OBS |
+| `headsets.cmd.setSend` | `{ id, source, on?, db? }` |
+| `headsets.cmd.listOutputs` | `{}` refresh `outputs` |
+
 ## Recording
 One take produces OBS's program recording (the picture the stream shows; audio track 1 is the stream mix, tracks 2–6 the isolated mics, see Audio) plus one video file per camera. OBS encodes every file; the hub never touches video. Each camera's `record` in `.streamhub/cameras.json` picks where its own file comes from: `obs` (default; a `streamhub ISO` Source Record filter the hub manages on the camera's OBS source, set to record whenever OBS records), `card` (the camera records to its own card through its driver), `both`, or `off`. The hub follows OBS's record output whoever starts it (dashboard, OBS, a hotkey). Setup: `docs/setup/recording.md`.
 ```ts
@@ -260,6 +292,6 @@ Hub → client: envelopes, plus
 - `{ "op": "error", "code": "bad_json"|"bad_op"|"bad_payload"|"forbidden", "message": string }`; the connection stays open.
 - `{ "op": "history-result", "reqId": string, "events": Envelope[] }`
 
-**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `obs.settings`, `obs.sources.list`, `destinations.list`, `relay.connection`, `platform.status` and `platform.live` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state`, `audio.devices` and `recording.state` that match the new topics, oldest first. A reloaded dashboard is correct at once.
+**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `obs.settings`, `obs.sources.list`, `destinations.list`, `relay.connection`, `platform.status` and `platform.live` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state`, `audio.devices`, `headsets.state` and `recording.state` that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
-**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*`, `audio.cmd.*` and `recording.cmd.*`, and never receive `camera.driver.*`.
+**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*`, `audio.cmd.*`, `recording.cmd.*` and `headsets.cmd.*`, and never receive `camera.driver.*`.
