@@ -8,6 +8,7 @@ import {
   MicPatchSchema,
 } from './audio';
 import { CameraDriverStateSchema, CameraIdSchema, CameraSetSchema, CameraStateSchema } from './cameras';
+import { RecordingSessionSchema } from './recording';
 
 export const PlatformSchema = z.enum(['twitch', 'youtube', 'kick', 'x']);
 export type Platform = z.infer<typeof PlatformSchema>;
@@ -140,6 +141,10 @@ export const EventSchemas = {
   'camera.cmd.set': CameraSetSchema,
   'camera.driver.state': CameraDriverStateSchema,
   'camera.driver.cmd.set': CameraSetSchema,
+  'camera.driver.cmd.record': z.object({ id: CameraIdSchema, on: z.boolean() }),
+  'recording.state': RecordingSessionSchema,
+  'recording.cmd.start': Empty,
+  'recording.cmd.stop': Empty,
   'audio.state': AudioStateSchema,
   'audio.levels': AudioLevelsSchema,
   'audio.devices': AudioDevicesSchema,

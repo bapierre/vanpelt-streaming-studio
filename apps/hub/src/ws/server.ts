@@ -17,6 +17,7 @@ export const DASHBOARD_PUBLISHABLE = [
   'camera.cmd.',
   'destinations.cmd.',
   'audio.cmd.',
+  'recording.cmd.',
 ];
 /** Events that may carry secrets: handled inside the hub, never sent to any client. */
 export const NEVER_FORWARDED = ['connections.cmd.', 'destinations.cmd.'];
@@ -51,7 +52,7 @@ function driverRole(driverId: string, cameraIds: string[]): Role {
   return {
     source: `driver:${driverId}`,
     canPublish: (type, payload) => type === 'camera.driver.state' && owns(payload),
-    canReceive: (e) => e.type === 'camera.driver.cmd.set' && owns(e.payload),
+    canReceive: (e) => (e.type === 'camera.driver.cmd.set' || e.type === 'camera.driver.cmd.record') && owns(e.payload),
   };
 }
 

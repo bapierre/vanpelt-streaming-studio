@@ -44,6 +44,7 @@ const SETTING_ANTI_FLICKER = 134;
 const SETTING_HYPERSMOOTH = 135;
 const STATUS_SYSTEM_HOT = 6;
 const STATUS_BATTERY_PERCENT = 70;
+const STATUS_ENCODING = 10;
 
 const WEBCAM_OFF = 0;
 const WEBCAM_ERRORS: Record<number, string> = {
@@ -154,6 +155,10 @@ export class GoProDevice implements CameraDevice {
   private zoom = 0;
   private battery: number | undefined;
   private hot: boolean | undefined;
+  private encoding = false;
+  /** Whether the hub asked us to record to the card. */
+  private wantCard = false;
+  private cardError: string | undefined;
   private readonly accepted = new Map<number, Option[]>();
 
   constructor(
@@ -203,6 +208,25 @@ export class GoProDevice implements CameraDevice {
         throw err;
       } finally {
         this.busy = undefined;
+        this.emit();
+      }
+    });
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  record(on: boolean): Promise<void> {
+    const run = this.queue.then(async () => {
+      this.wantCard = on;
+      try {
+        if (this.phase !== 'connected') throw new RangeError('the GoPro is not connected');
+        await this.get(`/gopro/camera/shutter/${on ? 'start' : 'stop'}`);
+        this.cardError = undefined;
+      } catch (err) {
+        this.cardError = `Card recording did not ${on ? 'start' : 'stop'}: ${err instanceof Error ? err.message : String(err)}`;
+        throw err;
+      } finally {
+        await this.refresh().catch(() => {});
         this.emit();
       }
     });
@@ -293,6 +317,7 @@ export class GoProDevice implements CameraDevice {
     this.battery = typeof battery === 'number' ? battery : undefined;
     const hot = state?.status?.[STATUS_SYSTEM_HOT];
     this.hot = typeof hot === 'number' ? hot === 1 : undefined;
+    this.encoding = state?.status?.[STATUS_ENCODING] === 1;
     for (const id of [SETTING_ANTI_FLICKER, SETTING_HYPERSMOOTH]) {
       const v = state?.settings?.[id];
       if (typeof v === 'number') this.settings[id] = String(v);
@@ -433,10 +458,17 @@ export class GoProDevice implements CameraDevice {
     const telemetry = this.phase === 'connected' && (this.battery !== undefined || this.hot !== undefined)
       ? { ...(this.battery !== undefined ? { battery: this.battery } : {}), ...(this.hot !== undefined ? { overheating: this.hot } : {}) }
       : undefined;
+    const connected = this.phase === 'connected';
+    const cardDetail =
+      this.cardError ??
+      (connected && this.wantCard && !this.encoding
+        ? 'The GoPro is not recording to its card. Some models will not record while the webcam is on.'
+        : undefined);
     this.report({
       status,
       ...(detail ? { detail } : {}),
       ...(telemetry ? { telemetry } : {}),
+      card: { supported: true, recording: connected && this.encoding, ...(cardDetail ? { detail: cardDetail } : {}) },
       controls: this.controls(),
       obsInput: {
         kind: 'ffmpeg_source',

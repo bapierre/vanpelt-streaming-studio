@@ -223,6 +223,15 @@ describe('camera drivers', () => {
     await sync(dash); // a forwarded driver command would arrive before the sync reply
   });
 
+  it('delivers card record commands only to the owning driver', async () => {
+    const d = await open(undefined, DRIVER);
+    d.send({ op: 'subscribe', topics: ['*'] });
+    await sync(d);
+    bus.publish({ type: 'camera.driver.cmd.record', payload: { id: 'sony', on: true }, source: 'hub' });
+    bus.publish({ type: 'camera.driver.cmd.record', payload: { id: 'gopro', on: true }, source: 'hub' });
+    expect(await d.next()).toMatchObject({ type: 'camera.driver.cmd.record', payload: { id: 'gopro', on: true } });
+  });
+
   it('lets dashboards send camera commands', async () => {
     const seen: unknown[] = [];
     bus.subscribe(['camera.cmd.'], (e) => seen.push(e.payload));

@@ -161,12 +161,13 @@ type CameraState = {
 | `camera.state` | `CameraState` (retained per camera id) |
 | `camera.cmd.take` | `{ id }` switch to the camera's scene |
 | `camera.cmd.set` | `{ id, key, value: string \| number \| boolean \| null }` change one control |
-| `camera.driver.state` | `{ id, status, detail?, telemetry?, controls, obsInput?: { kind, settings } }` (driver → hub) |
+| `camera.driver.state` | `{ id, status, detail?, telemetry?, controls, obsInput?: { kind, settings }, card?: { supported, recording, detail? } }` (driver → hub; `card` only from drivers that can record to the camera's own card) |
 | `camera.driver.cmd.set` | `{ id, key, value }` (hub → driver) |
+| `camera.driver.cmd.record` | `{ id, on: boolean }` (hub → driver) start or stop recording to the camera's card; sent when OBS starts or stops recording |
 
 OBS-side control keys: `obs.brightness`, `obs.contrast`, `obs.saturation`, `obs.gamma` (a `streamhub color` Color Correction filter the hub manages on the source), `obs.mirror`, `obs.cropLeft|Right|Top|Bottom` (the source's transform in the camera scene), `obs.reset`, and `obs.createScene` (offered when the scene or source is missing and the driver supplied `obsInput`).
 
-`camera.driver.*` events are only exchanged between the hub and the driver that owns the camera. Drivers connect to `/ws?driver=<moduleId>&token=<token>` without an Origin header; the token is handed to the driver process by the hub at launch. A driver may publish only `camera.driver.state` for its own camera ids and receives only `camera.driver.cmd.set` for them.
+`camera.driver.*` events are only exchanged between the hub and the driver that owns the camera. Drivers connect to `/ws?driver=<moduleId>&token=<token>` without an Origin header; the token is handed to the driver process by the hub at launch. A driver may publish only `camera.driver.state` for its own camera ids and receives only `camera.driver.cmd.set` and `camera.driver.cmd.record` for them.
 
 ## Audio
 Each mic is an OBS audio input listed in `.streamhub/audio.json`. Audio never passes through the hub: OBS mixes, filters and records it, and the hub controls OBS. Starting and stopping the recording belongs to the recording session (`recording.*`); the audio service only decides which tracks OBS records. Track 1 carries the stream mix; each of the first five mics is also routed alone to tracks 2–6 so recordings keep every voice separate. Later mics are mixed and tunable but get no isolated track (`track: null`). Setup: `docs/audio/mics.md`.
@@ -218,6 +219,33 @@ type AudioState = {
 | `audio.cmd.listDevices` | `{}` refresh `audio.devices` |
 | `audio.cmd.nest` | `{ scene? }` add the `streamhub mics` scene to `scene`, or to every scene |
 
+## Recording
+One take produces OBS's program recording (the picture the stream shows; audio track 1 is the stream mix, tracks 2–6 the isolated mics, see Audio) plus one video file per camera. OBS encodes every file; the hub never touches video. Each camera's `record` in `.streamhub/cameras.json` picks where its own file comes from: `obs` (default; a `streamhub ISO` Source Record filter the hub manages on the camera's OBS source, set to record whenever OBS records), `card` (the camera records to its own card through its driver), `both`, or `off`. The hub follows OBS's record output whoever starts it (dashboard, OBS, a hotkey). Setup: `docs/setup/recording.md`.
+```ts
+type CameraRecording = {
+  id: string; name: string;
+  mode: 'obs' | 'card' | 'both' | 'off';
+  iso?: 'ready' | 'recording' | 'offline' | 'no-plugin' | 'no-source' | 'error';    // when mode is obs or both
+  card?: 'ready' | 'recording' | 'unsupported' | 'offline' | 'error';                // when mode is card or both
+  detail?: string;                                                                     // why a camera cannot record
+};
+type RecordedFile = { kind: 'program' | 'camera' | 'card'; cameraId?: string; label: string; location: string };
+type RecordingSession = {
+  output: 'stopped' | 'starting' | 'recording' | 'paused' | 'stopping';
+  startedAt?: number;          // epoch ms the take started
+  directory?: string;          // OBS's recording folder
+  cameras: CameraRecording[];
+  disk?: { path: string; freeBytes: number; level: 'ok' | 'low' | 'critical'; minutesLeft?: number }; // low < 20 GB, critical < 5 GB
+  lastSession?: { endedAt: number; files: RecordedFile[] };  // card files are listed as "On <camera>'s card"
+  detail?: string;             // e.g. OBS refused to start, or OBS is not connected
+};
+```
+| type | payload |
+|---|---|
+| `recording.state` | `RecordingSession` (retained) |
+| `recording.cmd.start` | `{}` start OBS recording |
+| `recording.cmd.stop` | `{}` stop OBS recording (the dashboard asks for a second click) |
+
 ## Module events
 Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`.
 
@@ -232,6 +260,6 @@ Hub → client: envelopes, plus
 - `{ "op": "error", "code": "bad_json"|"bad_op"|"bad_payload"|"forbidden", "message": string }`; the connection stays open.
 - `{ "op": "history-result", "reqId": string, "events": Envelope[] }`
 
-**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `obs.settings`, `obs.sources.list`, `destinations.list`, `relay.connection`, `platform.status` and `platform.live` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state` and `audio.devices` that match the new topics, oldest first. A reloaded dashboard is correct at once.
+**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `obs.settings`, `obs.sources.list`, `destinations.list`, `relay.connection`, `platform.status` and `platform.live` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state`, `audio.devices` and `recording.state` that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
-**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*` and `audio.cmd.*`, and never receive `camera.driver.*`.
+**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*`, `audio.cmd.*` and `recording.cmd.*`, and never receive `camera.driver.*`.

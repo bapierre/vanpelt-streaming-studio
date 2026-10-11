@@ -66,6 +66,14 @@ export const CameraStateSchema = z.object({
 });
 export type CameraState = z.infer<typeof CameraStateSchema>;
 
+/** What a driver reports about recording to the camera's own card. Omitted means the driver cannot. */
+export const CardRecordingSchema = z.object({
+  supported: z.boolean(),
+  recording: z.boolean(),
+  detail: z.string().max(300).optional(),
+});
+export type CardRecording = z.infer<typeof CardRecordingSchema>;
+
 export const CameraDriverStateSchema = z
   .object({
     id: CameraIdSchema,
@@ -74,6 +82,7 @@ export const CameraDriverStateSchema = z
     telemetry: CameraTelemetrySchema.optional(),
     controls: z.array(CameraControlSchema).max(40),
     obsInput: ObsInputSuggestionSchema.optional(),
+    card: CardRecordingSchema.optional(),
   })
   .refine((s) => !s.controls.some((c) => c.key.startsWith('obs.')), {
     message: 'driver control keys may not start with "obs."',

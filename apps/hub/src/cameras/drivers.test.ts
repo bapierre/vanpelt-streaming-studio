@@ -27,6 +27,7 @@ const cam = (id: string, driver: string | null): CameraConfig => ({
   scene: id,
   source: id,
   driverConfig: { serial: 'C123' },
+  record: 'obs',
 });
 
 const gopro: DriverModule = { id: 'camera-gopro', name: 'GoPro', entry: '/m/camera-gopro/src/main.ts' };

@@ -18,6 +18,7 @@ const RETAINED_TYPES = new Set([
   'relay.connection',
   'audio.state',
   'audio.devices',
+  'recording.state',
 ]);
 
 /** Retained once per value of the named payload field. */

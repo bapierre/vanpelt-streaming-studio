@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
-import { CameraIdSchema } from '@streamhub/shared';
+import { CameraIdSchema, CameraRecordModeSchema } from '@streamhub/shared';
 import { describeError } from '../util/errors';
 
 export const CameraConfigSchema = z.object({
@@ -11,6 +11,8 @@ export const CameraConfigSchema = z.object({
   scene: z.string().min(1),
   source: z.string().min(1),
   driverConfig: z.record(z.string(), z.unknown()).default({}),
+  /** How this camera gets its own video file when OBS records. */
+  record: CameraRecordModeSchema.default('obs'),
 });
 export type CameraConfig = z.infer<typeof CameraConfigSchema>;
 

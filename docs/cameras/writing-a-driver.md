@@ -55,6 +55,7 @@ Rules:
 - **Fail soft.** `start()` must not throw. When the camera is unplugged, report `disconnected` with a `detail` the streamer can act on ("GoPro not reachable at 172.27.189.51: is USB plugged in?") and keep retrying.
 - **Describe controls.** Each control is a `select`, `range`, `toggle` or `action` (see `CameraControl` in EVENTS.md). Set `disabled` with a reason when a control can't be used right now. Keys may not start with `obs.`.
 - **Offer an OBS recipe** when the camera can be captured without extra software: `obsInput: { kind, settings }`. The dashboard then shows a "Create OBS scene" button.
+- **Card recording (optional).** If the camera can record to its own card, implement `async record(on)` and include `card: { supported: true, recording, detail? }` in every report. The hub calls `record(true)` when OBS starts recording and `record(false)` when it stops, for cameras configured with `"record": "card"` or `"both"`. Report `recording` from what the camera says it is doing, not from what you asked for, and put the reason in `detail` when it refuses.
 - **Never log secrets.** Driver stdout and stderr go to the hub log, prefixed with `[driver:<id>]`.
 
 ## 3. Configure a camera that uses it

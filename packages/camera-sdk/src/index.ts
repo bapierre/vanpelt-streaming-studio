@@ -3,13 +3,14 @@ import type {
   CameraControl,
   CameraStatus,
   CameraTelemetry,
+  CardRecording,
   ControlValue,
   EventPayload,
   ObsInputSuggestion,
 } from '@streamhub/shared';
 import { WebSocket } from 'ws';
 
-export type { CameraControl, CameraStatus, CameraTelemetry, ControlValue, ObsInputSuggestion };
+export type { CameraControl, CameraStatus, CameraTelemetry, CardRecording, ControlValue, ObsInputSuggestion };
 
 /** One camera from `.streamhub/cameras.json`; `config` is its `driverConfig`. */
 export type DriverCamera = { id: string; name: string; config: Record<string, unknown> };
@@ -21,6 +22,8 @@ export type DeviceReport = {
   telemetry?: CameraTelemetry;
   controls: CameraControl[];
   obsInput?: ObsInputSuggestion;
+  /** Report this only if the device implements `record`. */
+  card?: CardRecording;
 };
 
 export interface CameraDevice {
@@ -29,6 +32,8 @@ export interface CameraDevice {
   stop(): Promise<void>;
   /** Apply one control. A rejection is logged; report the resulting state either way. */
   set(key: string, value: ControlValue): Promise<void>;
+  /** Start or stop recording to the camera's own card. Called when OBS starts or stops recording. */
+  record?(on: boolean): Promise<void>;
 }
 
 export type DeviceFactory = (camera: DriverCamera, report: (r: DeviceReport) => void) => CameraDevice;
@@ -98,6 +103,12 @@ export function runDriver(factory: DeviceFactory, opts: RunOptions = {}): Runnin
   hub.on('camera.driver.cmd.set', (e) => {
     const { id, key, value } = e.payload as EventPayload<'camera.driver.cmd.set'>;
     devices.get(id)?.set(key, value).catch((err) => log(`${id}: ${key} failed: ${describe(err)}`));
+  });
+  hub.on('camera.driver.cmd.record', (e) => {
+    const { id, on } = e.payload as EventPayload<'camera.driver.cmd.record'>;
+    const device = devices.get(id);
+    if (!device?.record) return log(`${id}: cannot record to its card`);
+    device.record(on).catch((err) => log(`${id}: card record ${on ? 'start' : 'stop'} failed: ${describe(err)}`));
   });
   devices.forEach((d) => d.start());
 

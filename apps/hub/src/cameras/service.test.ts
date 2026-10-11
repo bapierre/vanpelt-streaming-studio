@@ -64,8 +64,8 @@ function fakeObs(items: Record<string, number> = {}) {
   return { obs, calls, items, transform: () => t };
 }
 
-const sony: CameraConfig = { id: 'sony', name: 'Sony A6400', driver: null, scene: 'Sony', source: 'Sony cam', driverConfig: {} };
-const gopro: CameraConfig = { id: 'gopro', name: 'GoPro', driver: 'camera-gopro', scene: 'GoPro', source: 'GoPro feed', driverConfig: {} };
+const sony: CameraConfig = { id: 'sony', name: 'Sony A6400', driver: null, scene: 'Sony', source: 'Sony cam', driverConfig: {}, record: 'obs' };
+const gopro: CameraConfig = { id: 'gopro', name: 'GoPro', driver: 'camera-gopro', scene: 'GoPro', source: 'GoPro feed', driverConfig: {}, record: 'obs' };
 
 function setup(cameras: CameraConfig[], items: Record<string, number> = { 'Sony/Sony cam': 7 }, installed = ['camera-gopro']) {
   const bus = new Bus();

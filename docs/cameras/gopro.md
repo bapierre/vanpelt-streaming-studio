@@ -34,6 +34,7 @@ Checked against the Open GoPro HTTP API 2.0 docs (https://gopro.github.io/OpenGo
 | Webcam | `GET /gopro/webcam/status`, `start?res=&fov=&port=&protocol=TS`, `stop`, `exit` | Stream is H.264 in MPEG-TS over UDP |
 | Settings | `GET /gopro/camera/setting?setting=<id>&option=<n>` | 403 lists the accepted options; the driver adopts that list |
 | Zoom | `GET /gopro/camera/digital_zoom?percent=<0–100>` | |
+| Card recording | `GET /gopro/camera/shutter/start`, `stop` | Sent when OBS starts/stops recording if the camera has `"record": "card"` or `"both"`; status 10 (encoding) says whether it really records (checked against the Open GoPro spec on 2026-10-11) |
 
 Controls on the dashboard: webcam on/off, resolution (1080p/720p), lens (wide, narrow, SuperView, linear), HyperSmooth, anti-flicker, digital zoom. Changing resolution or lens restarts the stream. HyperSmooth can only change while webcam mode is exited, so the driver stops, exits, applies and restarts.
 
@@ -45,6 +46,7 @@ These could not be checked without a camera:
 - Option values for anti-flicker and HyperSmooth on HERO12. The current docs only list HERO13 values. The driver starts with HERO12 values (60 Hz = 2, 50 Hz = 3; HyperSmooth off = 0, low = 1, auto boost = 4) and switches to the camera's own list after the first rejection.
 - Whether digital zoom applies in webcam mode.
 - Stream latency of the Media Source; lower `buffering_mb` in OBS if it lags.
+- Whether the shutter records to the card while webcam mode is on. The Open GoPro spec does not say. If the camera accepts the shutter but status 10 stays 0, the dashboard shows "not recording to its card"; use `"record": "obs"` for that camera instead. Also check that card recording does not interrupt the webcam stream.
 
 ## Not yet
 

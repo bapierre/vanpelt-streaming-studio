@@ -21,8 +21,15 @@ describe('loadCameras', () => {
   it('fills defaults for an OBS-only camera', async () => {
     const path = await file(JSON.stringify([{ id: 'sony', name: 'Sony', scene: 'Sony', source: 'Cam' }]));
     expect(await loadCameras(path)).toEqual([
-      { id: 'sony', name: 'Sony', driver: null, scene: 'Sony', source: 'Cam', driverConfig: {} },
+      { id: 'sony', name: 'Sony', driver: null, scene: 'Sony', source: 'Cam', driverConfig: {}, record: 'obs' },
     ]);
+  });
+
+  it('rejects an unknown record mode', async () => {
+    const logs: string[] = [];
+    const path = await file(JSON.stringify([{ id: 'sony', name: 'Sony', scene: 'Sony', source: 'Cam', record: 'cloud' }]));
+    expect(await loadCameras(path, (m) => logs.push(m))).toEqual([]);
+    expect(logs[0]).toContain('record');
   });
 
   it('logs and ignores duplicate ids or broken JSON', async () => {

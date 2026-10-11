@@ -47,6 +47,11 @@ function start(sets: Array<[string, string, unknown]> = []) {
         set: async (key, value) => {
           sets.push([camera.id, key, value]);
         },
+        ...(camera.id === 'b' && {
+          record: async (on: boolean) => {
+            sets.push([camera.id, 'record', on]);
+          },
+        }),
       };
       return device;
     },
@@ -87,6 +92,20 @@ describe('runDriver', () => {
     );
     await until(() => sets.length === 1);
     expect(sets).toEqual([['b', 'fov', '2']]);
+  });
+
+  it('routes card record commands to devices that can record, skipping the rest', async () => {
+    const sets: Array<[string, string, unknown]> = [];
+    start(sets);
+    await until(() => connections.length === 1);
+    const send = (id: string) =>
+      connections[0]!.socket.send(
+        JSON.stringify({ id, type: 'camera.driver.cmd.record', ts: 0, source: 'hub', payload: { id, on: true } }),
+      );
+    send('a');
+    send('b');
+    await until(() => sets.length === 1);
+    expect(sets).toEqual([['b', 'record', true]]);
   });
 
   it('sends only the newest state after reconnecting', async () => {
