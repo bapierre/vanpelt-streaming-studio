@@ -98,7 +98,7 @@ Served by the hub at `http://127.0.0.1:4747/`. The Tauri desktop shell (`apps/de
 - Script/teleprompter view is **not** in the base (planned module).
 
 ### 7. Modules (`modules/*`)
-A module is a static web bundle + manifest, served at `http://127.0.0.1:4747/m/<id>/` (`apps/hub/src/modules`).
+A module is a static web bundle + manifest, served at `http://127.0.0.1:4748/m/<id>/` (`apps/hub/src/modules`). Modules get their own loopback port (`HUB_MODULES_PORT`, default 4748) so module JS — vibecoded code that renders chat text — can never act on the dashboard's origin: the dashboard WebSocket role does not exist on that port, and browsers attach each page's origin to every request, so a module page cannot reach the dashboard role on the main port either. Old `/m/<id>` URLs on the main port redirect to the modules port.
 ```json
 {
   "id": "featured-message",
@@ -111,14 +111,14 @@ A module is a static web bundle + manifest, served at `http://127.0.0.1:4747/m/<
 }
 ```
 - The hub discovers modules at startup by scanning `modules/*/manifest.json` (the folder name must equal `id`; manifests without `overlays`, like camera drivers, are skipped). `modules.list` (retained) gives the dashboard each overlay's URL and whether it is built.
-- It serves only files inside the module's `web` folder (default `dist`): no `..`, no dotfiles, no symlinks out. HTML is sent `no-store`, and every page gets `window.__STREAMHUB__ = { module, token }` injected into `<head>`, with a random token per hub run.
+- It serves only files inside the module's `web` folder (default `dist`): no `..`, no dotfiles, no symlinks out. HTML and the session script are sent `no-store`; each page loads `/m/<id>/__session.js`, a virtual script that sets `window.__STREAMHUB__ = { module, token }` with a random token per hub run. Module pages run under a Content-Security-Policy that forbids inline scripts (`script-src 'self'`), plus `frame-ancestors 'none'`/`X-Frame-Options: DENY`.
 - Overlays connect with `@streamhub/overlay-sdk`:
   ```ts
   const { module, token } = window.__STREAMHUB__;
   const hub = connect({ module, token });
   hub.on('show.feature.set', (e) => render(e.payload.message));
   ```
-- `/ws?module=<id>&token=<t>` with a wrong token is refused (403). A module connection receives only its `subscribes` (never secrets or driver traffic) and may publish only the `module.<id>.*` types in its `publishes`.
+- `/ws?module=<id>&token=<t>` with a wrong token is refused (403). A module connection receives only its `subscribes` — never secrets, driver traffic, or dashboard-only state (`connections.state`, `destinations.list`, `obs.settings`) — and may publish only the `module.<id>.*` types in its `publishes`.
 - `pnpm build` and `pnpm dev` build every module that has a `build` or `dev` script. Desktop builds copy each overlay module's manifest and built pages into the app.
 - This contract is what gets vibecoded live: **one stream = one new module folder.** The first module is `modules/alerts` (§13).
 
@@ -170,7 +170,7 @@ Free, self-owned alerts: events come straight from the platforms, never from Str
 - Desktop builds use the OS application-data directory for `.env` and `.streamhub/secrets.json`; development keeps the repo paths. OS keychain storage is deferred. OAuth continues in the system browser.
 
 ## Security
-- Listen on 127.0.0.1 only. Reject WebSocket connections whose Origin is not the hub itself (or the Vite dev server in development). OBS Browser Sources load overlays from the hub, so they send the hub's origin. Modules additionally need their session token (§7).
+- Listen on 127.0.0.1 only. Refuse HTTP and WebSocket requests whose Host header is not loopback (DNS rebinding), and reject WebSocket connections whose Origin is not the hub itself (or the Vite dev server when `NODE_ENV=development`; dev is opt-in, never the default). Browsers always send Origin, so a non-browser client (any other local process) gets the dashboard role only with the per-run dashboard token (`.streamhub/dashboard-token`, owner-only). Module pages live on their own port (§7) where the dashboard role does not exist; modules and drivers always need their session token. Responses carry `X-Frame-Options: DENY` and a CSP, and in `pnpm dev` the Vite server refuses to serve `.streamhub/`, `.env*` or `.git` (its `fs.deny`).
 - Treat all chat text as untrusted: render as text, never `innerHTML`.
 
 ## Out of scope for the base

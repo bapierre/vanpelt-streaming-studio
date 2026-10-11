@@ -24,7 +24,7 @@ YouTube needs nothing new.
 
 ## 2. Add the pop-up to OBS
 
-1. Open **Settings → Alerts**. Copy the **Alert pop-up** URL (it looks like `http://127.0.0.1:4747/m/alerts/popup.html`).
+1. Open **Settings → Alerts**. Copy the **Alert pop-up** URL (it looks like `http://127.0.0.1:4748/m/alerts/popup.html` — module pages live on their own port).
 2. In OBS, add a **Browser** source to every scene that should show alerts (or to a scene you nest into the others). Paste the URL, set width 1920 and height 1080, and leave the custom CSS empty. The page is transparent; the card appears near the top.
 3. In the Browser source properties, tick **Control audio via OBS** so the alert sounds go through the OBS mixer and into the stream and recording.
 4. Press **Test** next to any alert type. The card should appear in OBS.

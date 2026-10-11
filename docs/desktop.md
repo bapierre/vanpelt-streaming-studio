@@ -6,7 +6,7 @@ The Tauri 2 shell contains the existing dashboard. It starts its own local hub, 
 
 1. Install Node 20+, pnpm, Rust, and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/). On macOS, install Xcode command-line tools.
 2. Run `pnpm install`.
-3. Stop any web hub using the same `HUB_PORT` (default `4747`).
+3. Stop any web hub using the same `HUB_PORT` (default `4747`) or `HUB_MODULES_PORT` (default `4748`).
 4. Run `pnpm desktop:dev` at the repo root.
 
 The development app uses the repo's `.env` and `.streamhub/secrets.json`, just like `pnpm dev`. It loads a built dashboard rather than Vite: restart `pnpm desktop:dev` after frontend or hub changes. No frontend or hub code is duplicated in the desktop package.

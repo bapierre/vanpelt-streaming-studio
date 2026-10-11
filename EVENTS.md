@@ -96,7 +96,7 @@ type StreamDestination = { id: string; label: string; server: string /* rtmp(s):
 | `destinations.cmd.remove` | `{ id: string }` |
 | `destinations.cmd.useInObs` | `{ id: string }` (refused while OBS is streaming) |
 
-`destinations.list` carries stream keys: only the dashboard receives it, and it must never be forwarded to modules (M4). `destinations.cmd.*` is never forwarded to WebSocket clients.
+`destinations.list` carries stream keys: only the dashboard role receives it; the hub refuses to send it to modules. `destinations.cmd.*` is never forwarded to WebSocket clients.
 
 ## Show
 | type | payload |
@@ -337,7 +337,7 @@ Counting: followers = follows (YouTube subscribers only come in through totals).
 | `goal.cmd.reset` | `{ id }` back to 0 (stream goals and tips) |
 
 ## Modules
-Overlay modules are folders under `modules/` with a `manifest.json` that lists `overlays` (see ARCHITECTURE.md §7). The hub serves their built pages at `/m/<id>/` and injects a per-run session token.
+Overlay modules are folders under `modules/` with a `manifest.json` that lists `overlays` (see ARCHITECTURE.md §7). The hub serves their built pages at `/m/<id>/` on a dedicated port (default 4748, `HUB_MODULES_PORT`) and hands each page a per-run session token through `/m/<id>/__session.js`.
 
 | type | payload |
 |---|---|
@@ -347,6 +347,8 @@ Overlay modules are folders under `modules/` with a `manifest.json` that lists `
 Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`. A module page receives only the topics its manifest `subscribes` to.
 
 ## WebSocket control ops (client → hub)
+
+**Who may connect:** `/ws` on the hub port (default 4747) assigns one of three roles. A browser page from an allowed origin (the hub's own origin; the Vite dev origin too when `NODE_ENV=development`) gets the **dashboard** role. A non-browser client (no `Origin` header) gets the dashboard role only with `?token=<dashboard-token>` — a random token per hub run, written owner-only to `.streamhub/dashboard-token`. Drivers use `?driver=<id>&token=<t>` (no Origin), module pages use `?module=<id>&token=<t>` on the modules port, where the dashboard role does not exist. Requests with a non-loopback `Host` header are refused (DNS-rebinding guard).
 ```jsonc
 { "op": "subscribe",   "topics": ["chat.", "obs.scene.changed", "*"] } // "x." = prefix, "x.y" = exact, "*" = all
 { "op": "unsubscribe", "topics": ["chat."] }
@@ -359,4 +361,4 @@ Hub → client: envelopes, plus
 
 **Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `obs.settings`, `obs.sources.list`, `destinations.list`, `relay.connection`, `platform.status` and `platform.live` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state`, `audio.devices`, `headsets.state`, `recording.state`, `alert.config`, `alert.recent`, `goal.state`, `platform.totals` (one per platform) and `modules.list` that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
-**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*`, `audio.cmd.*`, `recording.cmd.*`, `headsets.cmd.*`, `alert.cmd.*` and `goal.cmd.*`, and never receive `camera.driver.*`. Module pages (`/ws?module=<id>&token=<t>`) follow their manifest instead.
+**Limits:** frames over 64 KB close the connection (code 1009); a client may hold at most 256 topic subscriptions; a client 8 MB behind is disconnected (droppable events like `audio.levels` are skipped past 256 KB); dead connections are probed every 30 s. Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*`, `audio.cmd.*`, `recording.cmd.*`, `headsets.cmd.*`, `alert.cmd.*` and `goal.cmd.*`, and never receive `camera.driver.*`. Module pages (`/ws?module=<id>&token=<t>` on the modules port) follow their manifest instead, and never receive `connections.state`, `destinations.list` or `obs.settings` even if their manifest subscribes to them.
