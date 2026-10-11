@@ -123,6 +123,7 @@ fn start_hub(app: &tauri::AppHandle) -> Result<(OwnedHub, u16), ()> {
         .env("STREAMHUB_DESKTOP", "1")
         .env("STREAMHUB_DATA_DIR", &data)
         .env("STREAMHUB_DASHBOARD_DIR", resources.join("dashboard"))
+        .env("STREAMHUB_MODULES_DIR", resources.join("modules"))
         .env("STREAMHUB_PROTO_PATH", resources.join("stream_list.proto"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -1,0 +1,12 @@
+{
+  "id": "alerts",
+  "name": "Alerts and goals",
+  "version": "0.1.0",
+  "web": "dist",
+  "overlays": [
+    { "id": "popup", "name": "Alert pop-up", "path": "popup.html", "width": 1920, "height": 1080 },
+    { "id": "goal", "name": "Goal bar", "path": "goal.html", "width": 1920, "height": 1080 }
+  ],
+  "subscribes": ["alert.show", "alert.hide", "goal.state"],
+  "publishes": []
+}

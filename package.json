@@ -7,11 +7,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter @streamhub/hub --filter @streamhub/dashboard --parallel run dev",
+    "dev": "pnpm --filter @streamhub/hub --filter @streamhub/dashboard --filter \"./modules/*\" --parallel --if-present run dev",
     "desktop:dev": "pnpm --filter @streamhub/desktop run dev",
     "desktop:build": "pnpm --filter @streamhub/desktop run build",
     "desktop:prepare": "pnpm build && node apps/desktop/scripts/prepare.mjs",
-    "build": "pnpm --filter @streamhub/dashboard run build",
+    "build": "pnpm --filter @streamhub/dashboard --filter \"./modules/*\" --if-present run build",
     "start": "pnpm --filter @streamhub/hub run start",
     "test": "pnpm -r --if-present run test",
     "typecheck": "pnpm -r --if-present run typecheck",
