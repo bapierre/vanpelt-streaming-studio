@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { MicIdSchema } from './audio';
 
+/** Where to get Exeldro's Audio Monitor plugin, which plays a source to any output device. */
+export const AUDIO_MONITOR_URL = 'https://obsproject.com/forum/resources/audio-monitor.1186/';
+
 export const HeadsetIdSchema = z.string().regex(/^[a-z0-9-]+$/, 'use lowercase letters, digits and dashes').max(40);
 
 /** The Audio Monitor plugin can only turn a signal down, so headset levels top out at 0 dB. */

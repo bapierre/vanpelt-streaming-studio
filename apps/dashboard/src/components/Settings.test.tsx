@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DestinationsPanel } from './DestinationsPanel';
 import { SecretInput, SecretText } from './Secret';
-import { SettingsSheet } from './SettingsSheet';
+import { GeneralSettings, SettingsTab } from './SettingsTab';
 import { SourcesPanel } from './SourcesPanel';
+import { RANGE_SEND_MS } from './ThrottledRange';
 
 afterEach(cleanup);
 
@@ -76,22 +77,59 @@ describe('DestinationsPanel', () => {
   });
 });
 
-describe('SettingsSheet', () => {
-  it('switches tabs and closes on Escape', () => {
-    const onClose = vi.fn();
+describe('SettingsTab', () => {
+  it('switches sections from the side menu and shows attention', () => {
     render(
-      <SettingsSheet
-        onClose={onClose}
-        tabs={[
-          { id: 'a', label: 'OBS', content: <p>obs body</p> },
-          { id: 'b', label: 'Platforms', content: <p>platforms body</p> },
+      <SettingsTab
+        sections={[
+          { id: 'general', label: 'General', content: <p>general body</p> },
+          { id: 'platforms', label: 'Platforms', content: <p>platforms body</p>, attention: true },
         ]}
       />,
     );
-    expect(screen.getByText('obs body')).toBeTruthy();
-    fireEvent.click(screen.getByRole('tab', { name: 'Platforms' }));
+    const menu = within(screen.getByRole('navigation', { name: 'Settings sections' }));
+    expect(screen.getByText('general body')).toBeTruthy();
+    expect(menu.getByRole('button', { name: 'General' }).getAttribute('aria-current')).toBe('page');
+    expect(menu.getByLabelText('needs attention')).toBeTruthy();
+    fireEvent.click(menu.getByRole('button', { name: /Platforms/ }));
     expect(screen.getByText('platforms body')).toBeTruthy();
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByText('general body')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Platforms' })).toBeTruthy();
+  });
+
+  it('opens on the requested section', () => {
+    render(
+      <SettingsTab
+        initial="platforms"
+        sections={[
+          { id: 'general', label: 'General', content: <p>general body</p> },
+          { id: 'platforms', label: 'Platforms', content: <p>platforms body</p> },
+        ]}
+      />,
+    );
+    expect(screen.getByText('platforms body')).toBeTruthy();
+  });
+});
+
+describe('GeneralSettings', () => {
+  it('sets the sound check target and the dashboard preferences', () => {
+    vi.useFakeTimers();
+    const onTarget = vi.fn();
+    const onPrefs = vi.fn();
+    render(<GeneralSettings targetDb={-20} disabled={false} prefs={{ startTab: 'last', chatSize: 'medium' }} onTarget={onTarget} onPrefs={onPrefs} />);
+    fireEvent.change(screen.getByLabelText('Sound check target'), { target: { value: '-18' } });
+    act(() => vi.advanceTimersByTime(RANGE_SEND_MS));
+    fireEvent.change(screen.getByLabelText('Open on'), { target: { value: 'chat' } });
+    fireEvent.change(screen.getByLabelText('Chat text size'), { target: { value: 'large' } });
+    expect(onTarget).toHaveBeenCalledWith(-18);
+    expect(onPrefs.mock.calls).toEqual([[{ startTab: 'chat' }], [{ chatSize: 'large' }]]);
+    const options = [...(screen.getByLabelText('Open on') as HTMLSelectElement).options].map((o) => o.value);
+    expect(options).not.toContain('settings');
+    vi.useRealTimers();
+  });
+
+  it('locks the target until the hub has sent it', () => {
+    render(<GeneralSettings targetDb={null} disabled={false} prefs={{ startTab: 'last', chatSize: 'medium' }} onTarget={vi.fn()} onPrefs={vi.fn()} />);
+    expect((screen.getByLabelText('Sound check target') as HTMLInputElement).disabled).toBe(true);
   });
 });

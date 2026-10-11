@@ -1,6 +1,5 @@
 /** The filter kind registered by Exeldro's Audio Monitor plugin. */
 export const AUDIO_MONITOR_KIND = 'audio_monitor';
-export const AUDIO_MONITOR_URL = 'https://obsproject.com/forum/resources/audio-monitor.1186/';
 
 const FILTER_PREFIX = 'streamhub hp ';
 export const headsetFilterName = (headsetId: string) => `${FILTER_PREFIX}${headsetId}`;

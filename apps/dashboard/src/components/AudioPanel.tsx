@@ -48,7 +48,7 @@ export function Meter({ id, levels }: { id: string; levels: Levels }) {
   );
 }
 
-function Fader({ mic, disabled, onSet }: { mic: MicState; disabled: boolean; onSet: AudioActions['onSet'] }) {
+export function Fader({ mic, disabled, onSet }: { mic: MicState; disabled: boolean; onSet: AudioActions['onSet'] }) {
   return (
     <ThrottledRange
       label={`${mic.name} volume`}
@@ -63,7 +63,7 @@ function Fader({ mic, disabled, onSet }: { mic: MicState; disabled: boolean; onS
   );
 }
 
-function MuteButton({ mic, disabled, onSet }: { mic: MicState; disabled: boolean; onSet: AudioActions['onSet'] }) {
+export function MuteButton({ mic, disabled, onSet }: { mic: MicState; disabled: boolean; onSet: AudioActions['onSet'] }) {
   return (
     <button
       className={mic.muted ? 'mute on' : 'mute'}
@@ -77,7 +77,7 @@ function MuteButton({ mic, disabled, onSet }: { mic: MicState; disabled: boolean
   );
 }
 
-/** Sidebar mixer: what you need during the show. Tuning lives in Settings → Audio. */
+/** Compact mixer: what you need during the show. Tuning lives in the Sound tab. */
 export function Mixer({
   mics,
   levels,
@@ -237,7 +237,7 @@ function FilterGroup({
   );
 }
 
-function SoundcheckView({ mic, disabled, onSoundcheck }: { mic: MicState; disabled: boolean; onSoundcheck: AudioActions['onSoundcheck'] }) {
+export function SoundcheckView({ mic, disabled, onSoundcheck }: { mic: MicState; disabled: boolean; onSoundcheck: AudioActions['onSoundcheck'] }) {
   const sc = mic.soundcheck;
   const listening = sc?.state === 'listening';
   return (
@@ -264,7 +264,8 @@ function SoundcheckView({ mic, disabled, onSoundcheck }: { mic: MicState; disabl
 
 const MONITOR_LABEL: Record<Monitor, string> = { off: 'Off', monitor: 'Headphones only', both: 'Headphones and stream' };
 
-function MicCard({ mic, levels, disabled, actions }: { mic: MicState; levels: Levels; disabled: boolean; actions: AudioActions }) {
+/** Everything about one mic: name, level, monitoring, sync, sound check and the voice filters. */
+export function MicCard({ mic, levels, disabled, actions }: { mic: MicState; levels: Levels; disabled: boolean; actions: AudioActions }) {
   const [name, setName] = useState(mic.name);
   useEffect(() => setName(mic.name), [mic.name]);
   const off = disabled || mic.status !== 'ok';
@@ -354,7 +355,7 @@ function MicCard({ mic, levels, disabled, actions }: { mic: MicState; levels: Le
   );
 }
 
-function AddMic({ devices, disabled, actions }: { devices: AudioDevices | null; disabled: boolean; actions: AudioActions }) {
+export function AddMic({ devices, disabled, actions }: { devices: AudioDevices | null; disabled: boolean; actions: AudioActions }) {
   const [name, setName] = useState('');
   const [source, setSource] = useState('');
   const [channel, setChannel] = useState<MicChannel>('both');
@@ -428,62 +429,8 @@ function AddMic({ devices, disabled, actions }: { devices: AudioDevices | null; 
   );
 }
 
-function recordingSummary(state: AudioState): string {
+export function recordingSummary(state: AudioState): string {
   const names = new Map(state.mics.filter((m) => m.track !== null).map((m) => [m.track, m.name]));
   return state.recordTracks.map((t) => (t === 1 ? 'Stream mix (track 1)' : `${names.get(t) ?? '?'} (track ${t})`)).join(', ');
 }
 
-export function AudioPanel({
-  state,
-  devices,
-  levels,
-  disabled,
-  actions,
-}: {
-  state: AudioState | null;
-  devices: AudioDevices | null;
-  levels: Levels;
-  disabled: boolean;
-  actions: AudioActions;
-}) {
-  const { onListDevices } = actions;
-  useEffect(() => {
-    if (!disabled) onListDevices();
-    // Only when the tab opens or the hub comes back, not on every render.
-  }, [disabled]);
-  if (!state) return <p className="muted">Waiting for the hub…</p>;
-  return (
-    <section className="cameras audio">
-      <section className="group">
-        <div className="group-row form">
-          <div className="control">
-            <label htmlFor="audio-target">Sound check target</label>
-            <ThrottledRange
-              id="audio-target"
-              value={state.targetDb}
-              min={-40}
-              max={-6}
-              step={1}
-              disabled={disabled}
-              format={(v) => `${v} dBFS`}
-              onChange={actions.onTarget}
-            />
-            <span className="small muted control-help">Speech level every mic is set to. −20 suits most shows.</span>
-          </div>
-          <p className="small">
-            OBS records: {recordingSummary(state)}
-            {state.tracksPending && <span className="muted"> · track changes apply to the next recording</span>}
-          </p>
-          {state.recordDetail && <p className="small conn-error">{state.recordDetail}</p>}
-        </div>
-      </section>
-      {state.mics.length === 0 && <p className="muted">No mics yet. Add one below.</p>}
-      <div className="camera-grid">
-        {state.mics.map((mic) => (
-          <MicCard key={mic.id} mic={mic} levels={levels} disabled={disabled} actions={actions} />
-        ))}
-      </div>
-      <AddMic devices={devices} disabled={disabled} actions={actions} />
-    </section>
-  );
-}

@@ -3,7 +3,9 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AudioDevices, AudioState, MicState } from '@streamhub/shared';
 import { meterPercent, meterZone, micWarning, reduceAudio } from '../audio';
-import { AudioPanel, Mixer, type AudioActions } from './AudioPanel';
+import { Mixer, type AudioActions } from './AudioPanel';
+import type { HeadsetActions } from './HeadsetMatrix';
+import { SoundTab } from './SoundTab';
 import { RANGE_SEND_MS } from './ThrottledRange';
 
 afterEach(() => {
@@ -51,10 +53,37 @@ function actions() {
   } satisfies AudioActions;
 }
 
+function headsetActions() {
+  return {
+    onAdd: vi.fn<HeadsetActions['onAdd']>(),
+    onUpdate: vi.fn<HeadsetActions['onUpdate']>(),
+    onRemove: vi.fn<HeadsetActions['onRemove']>(),
+    onSetSend: vi.fn<HeadsetActions['onSetSend']>(),
+    onListOutputs: vi.fn<HeadsetActions['onListOutputs']>(),
+  } satisfies HeadsetActions;
+}
+
 function renderPanel(s: AudioState | null = state(), disabled = false) {
   const a = actions();
-  render(<AudioPanel state={s} devices={devices} levels={{ host: { rmsDb: -20, peakDb: -4 } }} disabled={disabled} actions={a} />);
-  return { a, card: (name: string) => within(screen.getByRole('article', { name })) };
+  const h = headsetActions();
+  render(
+    <SoundTab
+      state={s}
+      devices={devices}
+      levels={{ host: { rmsDb: -20, peakDb: -4 } }}
+      headsets={null}
+      disabled={disabled}
+      hubConnected={!disabled}
+      actions={a}
+      headsetActions={h}
+    />,
+  );
+  /** The detail panel of one mic, opened from its strip when needed. */
+  const card = (name: string) => {
+    if (!screen.queryByRole('article', { name })) fireEvent.click(screen.getByRole('button', { name: `Open ${name}` }));
+    return within(screen.getByRole('article', { name }));
+  };
+  return { a, h, card };
 }
 
 describe('Mixer', () => {
@@ -88,7 +117,41 @@ describe('Mixer', () => {
   });
 });
 
-describe('AudioPanel', () => {
+describe('SoundTab console', () => {
+  it('has a strip per mic with meter, fader, mute, track and on-air badges', () => {
+    vi.useFakeTimers();
+    const { a } = renderPanel(state([host, { ...guest, live: false }]));
+    expect(screen.getAllByRole('meter')).toHaveLength(2);
+    expect(screen.getByText('On air')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Mute Guest' }));
+    fireEvent.change(screen.getByLabelText('Host volume'), { target: { value: '-6' } });
+    act(() => vi.advanceTimersByTime(RANGE_SEND_MS));
+    fireEvent.click(screen.getByRole('button', { name: 'Sound check Host' }));
+    expect(a.onSet.mock.calls).toEqual([[{ id: 'guest', muted: true }], [{ id: 'host', volumeDb: -6 }]]);
+    expect(a.onSoundcheck).toHaveBeenCalledWith('host', 'start');
+  });
+
+  it('opens and closes the detail panel from the strip', () => {
+    renderPanel();
+    expect(screen.queryByRole('article')).toBeNull();
+    const open = screen.getByRole('button', { name: 'Open Host' });
+    fireEvent.click(open);
+    expect(screen.getByRole('article', { name: 'Host' })).toBeTruthy();
+    expect(open.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Open Guest' }));
+    expect(screen.queryByRole('article', { name: 'Host' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Guest' }));
+    expect(screen.queryByRole('article')).toBeNull();
+  });
+
+  it('asks for output devices for the headsets when it opens', () => {
+    const { h } = renderPanel();
+    expect(screen.getByRole('heading', { name: 'Headsets' })).toBeTruthy();
+    expect(h.onListOutputs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SoundTab mic details', () => {
   it('summarises the recorded tracks and asks for devices when it opens', () => {
     const { a } = renderPanel();
     expect(screen.getByText(/Stream mix \(track 1\), Host \(track 2\), Guest \(track 3\)/)).toBeTruthy();
