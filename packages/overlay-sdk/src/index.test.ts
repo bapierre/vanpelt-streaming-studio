@@ -1,7 +1,7 @@
 import type { AddressInfo } from 'node:net';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer, type WebSocket as ServerSocket } from 'ws';
-import { connect, type HubClient, type WebSocketCtor } from './index';
+import { connect, reconnectByReload, type HubClient, type HubStatus, type WebSocketCtor } from './index';
 
 const WS = WebSocket as unknown as WebSocketCtor;
 
@@ -115,9 +115,90 @@ describe('connect', () => {
     expect(received.map((m) => m.op)).toEqual(['subscribe', 'subscribe']);
   });
 
+  it('rejects a queued history request that goes stale while disconnected', async () => {
+    client = connect({ url, WebSocketImpl: WS, reconnectBaseMs: 50, reconnectMaxMs: 50, queueTtlMs: 10 });
+    await until(() => sockets.length === 1);
+    sockets[0]!.close();
+    const statuses: string[] = [];
+    client.onStatus((s) => statuses.push(s));
+    await until(() => statuses.includes('closed'));
+    const stale = expect(client.history('chat.message')).rejects.toThrow('dropped');
+    await until(() => sockets.length === 2); // reconnected, the stale request was dropped
+    await stale;
+  });
+
+  it('rejects a history request when the outbox is full', async () => {
+    client = connect({ url, WebSocketImpl: WS, reconnectBaseMs: 5000, reconnectMaxMs: 5000 });
+    await until(() => sockets.length === 1);
+    sockets[0]!.close();
+    const statuses: string[] = [];
+    client.onStatus((s) => statuses.push(s));
+    await until(() => statuses.includes('closed'));
+    for (let i = 0; i < 100; i++) client.publish('obs.cmd.setScene', { scene: `${i}` });
+    await expect(client.history('chat.message')).rejects.toThrow('dropped');
+  });
+
   it('passes module identity in the URL', async () => {
     client = connect({ url, WebSocketImpl: WS, module: 'chat-overlay', token: 't0k' });
     await until(() => requestUrls.length === 1);
     expect(requestUrls[0]).toBe('/ws?module=chat-overlay&token=t0k');
+  });
+});
+
+describe('reconnectByReload', () => {
+  const fakeClient = () => {
+    let handler: ((s: HubStatus) => void) | undefined;
+    const client = {
+      onStatus: (h: (s: HubStatus) => void) => {
+        handler = h;
+        h('connecting');
+        return () => {};
+      },
+    } as unknown as HubClient;
+    return { client, emit: (s: HubStatus) => handler?.(s) };
+  };
+  const memoryStorage = () => {
+    const map = new Map<string, string>();
+    return {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+    };
+  };
+
+  it('reloads when the socket keeps failing but the hub answers /health', async () => {
+    const { client, emit } = fakeClient();
+    const reload = vi.fn();
+    const fetchImpl = vi.fn(async () => new Response('ok'));
+    reconnectByReload(client, { reload, fetchImpl: fetchImpl as typeof fetch, storage: memoryStorage() });
+    for (let i = 0; i < 3; i++) emit('closed');
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(fetchImpl).toHaveBeenCalledWith('/health', { cache: 'no-store' });
+  });
+
+  it('keeps the normal reconnect backoff while the hub itself is down', async () => {
+    const { client, emit } = fakeClient();
+    const reload = vi.fn();
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('connection refused');
+    });
+    reconnectByReload(client, { reload, fetchImpl: fetchImpl as typeof fetch, storage: memoryStorage() });
+    for (let i = 0; i < 3; i++) emit('closed');
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('reloads at most once per interval', async () => {
+    const { client, emit } = fakeClient();
+    const reload = vi.fn();
+    const fetchImpl = vi.fn(async () => new Response('ok'));
+    reconnectByReload(client, { reload, fetchImpl: fetchImpl as typeof fetch, storage: memoryStorage() });
+    for (let i = 0; i < 3; i++) emit('closed');
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    emit('open'); // reconnected, then the next hub restart refuses again
+    for (let i = 0; i < 3; i++) emit('closed');
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

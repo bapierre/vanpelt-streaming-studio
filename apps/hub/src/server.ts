@@ -52,6 +52,10 @@ export async function createServer(opts: ServerOptions): Promise<FastifyInstance
       if (file.status === 404) return reply.code(404).type('text/plain; charset=utf-8').send(file.body);
       // Pages carry this run's session token, so they must never be cached.
       reply.header('Cache-Control', file.type.startsWith('text/html') ? 'no-store' : 'no-cache');
+      if (file.status === 200 && file.etag) {
+        reply.header('ETag', file.etag);
+        if (req.headers['if-none-match'] === file.etag) return reply.code(304).send();
+      }
       return reply.type(file.type).send(file.body);
     });
   }

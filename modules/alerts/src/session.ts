@@ -1,4 +1,4 @@
-import { connect, type HubClient } from '@streamhub/overlay-sdk';
+import { connect, reconnectByReload, type HubClient } from '@streamhub/overlay-sdk';
 
 declare global {
   interface Window {
@@ -14,5 +14,9 @@ export function connectHub(): HubClient | null {
     console.warn('[alerts] open this page from the hub (http://127.0.0.1:4747/m/alerts/...)');
     return null;
   }
-  return connect({ module: session.module, token: session.token });
+  const hub = connect({ module: session.module, token: session.token });
+  // A hub restart mints a new module token; this page still holds the old one, so every
+  // reconnect is refused. Reload once to pick up the fresh token instead of dying silently.
+  reconnectByReload(hub);
+  return hub;
 }

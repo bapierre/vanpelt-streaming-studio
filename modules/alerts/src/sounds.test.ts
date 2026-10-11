@@ -17,6 +17,7 @@ function fakeCtx(state: AudioContextState = 'running') {
     destination: {},
     state,
     resume: vi.fn(async () => {}),
+    suspend: vi.fn(async () => {}),
     createOscillator: vi.fn(() => {
       const osc = {
         type: '',
@@ -60,5 +61,35 @@ describe('playSound', () => {
     const { ctx, raw } = fakeCtx('suspended');
     playSound('pop', 1, ctx);
     expect(raw.resume).toHaveBeenCalled();
+  });
+
+  it('does not create an AudioContext for silent alerts', () => {
+    const ctor = vi.fn();
+    vi.stubGlobal('AudioContext', ctor);
+    try {
+      playSound('none', 1);
+      playSound('chime', 0);
+      expect(ctor).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('suspends the context after the last note, and a new sound postpones it', () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx, raw } = fakeCtx();
+      playSound('pop', 1, ctx);
+      vi.advanceTimersByTime(10_000);
+      expect(raw.suspend).toHaveBeenCalledTimes(1);
+
+      const second = fakeCtx();
+      playSound('coin', 1, second.ctx);
+      playSound('coin', 1, second.ctx);
+      vi.advanceTimersByTime(10_000);
+      expect(second.raw.suspend).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

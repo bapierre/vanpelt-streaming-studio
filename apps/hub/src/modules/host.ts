@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readdir, readFile, realpath } from 'node:fs/promises';
 import { extname, join, sep } from 'node:path';
@@ -26,7 +26,9 @@ const CONTENT_TYPES: Record<string, string> = {
   '.ogg': 'audio/ogg',
 };
 
-export type ServedFile = { status: 200; type: string; body: Buffer | string } | { status: 404; body: string };
+export type ServedFile =
+  | { status: 200; type: string; body: Buffer | string; etag?: string }
+  | { status: 404; body: string };
 
 /**
  * Finds overlay modules (`modules/<id>/manifest.json` with `overlays`), serves their built pages
@@ -131,7 +133,12 @@ export class ModuleHost {
     } catch {
       return { status: 404, body: 'Not found' };
     }
-    if (ext !== '.html') return { status: 200, type, body };
+    // Assets revalidate against this ETag (Cache-Control: no-cache), so unchanged ones answer 304.
+    // HTML is excluded: it carries the session token and is served no-store.
+    if (ext !== '.html') {
+      const etag = `"${createHash('sha256').update(body).digest('base64url')}"`;
+      return { status: 200, type, body, etag };
+    }
     return { status: 200, type, body: injectSession(body.toString('utf8'), id, m.token) };
   }
 }

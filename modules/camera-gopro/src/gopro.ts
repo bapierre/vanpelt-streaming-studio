@@ -141,8 +141,7 @@ export class GoProDevice implements CameraDevice {
   private detail: string | undefined;
   private stopped = false;
   private attempt = 0;
-  private failures = 0;
-  private timers: unknown[] = [];
+  private timers = new Set<unknown>();
   private generation = 0;
   private queue: Promise<void> = Promise.resolve();
   private busy: string | undefined;
@@ -254,45 +253,63 @@ export class GoProDevice implements CameraDevice {
       await this.refresh();
       this.phase = 'connected';
       this.attempt = 0;
-      this.failures = 0;
       this.detail = undefined;
       this.emit();
       this.every(this.keepAliveMs, () => this.get('/gopro/camera/keep_alive'));
-      this.every(this.pollMs, async () => {
-        await this.refresh();
-        this.emit();
-      });
+      this.every(
+        this.pollMs,
+        async () => {
+          await this.refresh();
+          this.emit();
+        },
+        // A camera busy applying a change answers late; that must not read as a dead camera.
+        () => this.busy !== undefined,
+      );
     } catch (err) {
       this.lost(err);
     }
   }
 
-  /** Repeats `tick` every `ms` after the previous one settles, for the current connection only. */
-  private every(ms: number, tick: () => Promise<unknown>) {
+  /**
+   * Repeats `tick` every `ms` after the previous one settles, for the current connection only.
+   * Each loop holds exactly one timer handle and counts its own failures, so a missed poll does
+   * not eat the keep-alive's budget. `skip` postpones a tick without counting it as a failure.
+   */
+  private every(ms: number, tick: () => Promise<unknown>, skip?: () => boolean) {
     const generation = this.generation;
     const live = () => !this.stopped && this.phase === 'connected' && generation === this.generation;
-    const run = () => {
+    let failures = 0;
+    let handle: unknown;
+    const schedule = () => {
       if (!live()) return;
+      handle = this.timer.set(run, ms);
+      this.timers.add(handle);
+    };
+    const run = () => {
+      this.timers.delete(handle);
+      if (!live()) return;
+      if (skip?.()) {
+        schedule();
+        return;
+      }
       tick()
         .then(
           () => {
-            this.failures = 0;
+            failures = 0;
           },
           (err) => {
             // One missed keep-alive is normal while the camera is busy; two in a row means it is gone.
-            if (++this.failures >= 2 && live()) this.lost(err);
+            if (++failures >= 2 && live()) this.lost(err);
           },
         )
-        .finally(() => {
-          if (live()) this.timers.push(this.timer.set(run, ms));
-        });
+        .finally(schedule);
     };
-    this.timers.push(this.timer.set(run, ms));
+    schedule();
   }
 
   private clearTimers() {
     this.timers.forEach((t) => this.timer.clear(t));
-    this.timers = [];
+    this.timers.clear();
   }
 
   private lost(err: unknown) {
@@ -305,7 +322,11 @@ export class GoProDevice implements CameraDevice {
     this.detail = `GoPro not reachable at ${this.cfg.host} (${why}). Is it plugged in over USB and switched on?`;
     this.emit();
     const ceiling = Math.min(30_000, 1000 * 2 ** this.attempt++);
-    this.timers.push(this.timer.set(() => void this.connect(), ceiling / 2 + this.rand() * (ceiling / 2)));
+    const handle = this.timer.set(() => {
+      this.timers.delete(handle);
+      void this.connect();
+    }, ceiling / 2 + this.rand() * (ceiling / 2));
+    this.timers.add(handle);
   }
 
   private async refresh() {

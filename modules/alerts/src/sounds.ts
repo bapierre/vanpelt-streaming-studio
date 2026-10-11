@@ -32,10 +32,11 @@ const LOUDNESS: Record<OscillatorType, number> = {
 
 type AudioCtx = Pick<
   AudioContext,
-  'currentTime' | 'destination' | 'createOscillator' | 'createGain' | 'state' | 'resume'
+  'currentTime' | 'destination' | 'createOscillator' | 'createGain' | 'state' | 'resume' | 'suspend'
 >;
 
 let shared: AudioCtx | null = null;
+let suspendTimer: ReturnType<typeof setTimeout> | undefined;
 
 function context(): AudioCtx | null {
   if (shared) return shared;
@@ -45,28 +46,32 @@ function context(): AudioCtx | null {
   return shared;
 }
 
-export function playSound(
-  sound: AlertSound,
-  volume: number,
-  ctx: AudioCtx | null = context(),
-): void {
-  if (sound === 'none' || volume <= 0 || !ctx) return;
-  if (ctx.state === 'suspended') void ctx.resume();
-  const start = ctx.currentTime + 0.02;
+export function playSound(sound: AlertSound, volume: number, ctx?: AudioCtx | null): void {
+  if (sound === 'none' || volume <= 0) return;
+  // Only now is a context needed: silent alerts must not create one.
+  const c = ctx === undefined ? context() : ctx;
+  if (!c) return;
+  if (c.state === 'suspended') void c.resume();
+  const start = c.currentTime + 0.02;
+  let end = start;
   for (const note of SOUNDS[sound]) {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const osc = c.createOscillator();
+    const gain = c.createGain();
     osc.type = note.type;
     const t0 = start + note.at;
     const t1 = t0 + note.length;
+    end = Math.max(end, t1);
     osc.frequency.setValueAtTime(note.freq, t0);
     if (note.glideTo) osc.frequency.exponentialRampToValueAtTime(note.glideTo, t1);
     const peak = Math.min(1, volume) * LOUDNESS[note.type];
     gain.gain.setValueAtTime(0.0001, t0);
     gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, t1);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(c.destination);
     osc.start(t0);
     osc.stop(t1 + 0.05);
   }
+  // A running AudioContext keeps the audio thread awake; park it once the notes have played out.
+  clearTimeout(suspendTimer);
+  suspendTimer = setTimeout(() => void c.suspend(), (end - c.currentTime) * 1000 + 150);
 }

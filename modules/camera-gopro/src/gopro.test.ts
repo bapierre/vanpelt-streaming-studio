@@ -14,11 +14,21 @@ class FakeGoPro {
   shutterWorks = true;
   /** setting id → options it accepts; anything else gets a 403 listing them. */
   accepts: Record<number, Array<{ id: number; display_name: string }>> = {};
+  /** Paths listed here fail as if the camera were gone. */
+  failing: string[] = [];
+  /** Paths listed here only answer after releaseGates(). */
+  gated: string[] = [];
+  private gates: Array<() => void> = [];
   log: string[] = [];
 
+  releaseGates() {
+    this.gates.splice(0).forEach((r) => r());
+  }
+
   http: GoProHttp = async (path) => {
-    if (!this.reachable) throw new Error('connect EHOSTUNREACH');
+    if (!this.reachable || this.failing.some((f) => path.startsWith(f))) throw new Error('connect EHOSTUNREACH');
     this.log.push(path);
+    if (this.gated.some((g) => path.startsWith(g))) await new Promise<void>((r) => this.gates.push(r));
     const url = new URL(`http://cam${path}`);
     const q = (k: string) => Number(url.searchParams.get(k));
     switch (url.pathname) {
@@ -211,6 +221,52 @@ describe('GoProDevice', () => {
     expect(t.cam.log).toContain('/gopro/camera/keep_alive');
     expect(t.last().telemetry).toMatchObject({ battery: 40 });
     expect(t.timers.queue.map((e) => e.ms).sort()).toEqual([3000, 5000]); // both loops rescheduled once
+  });
+
+  it('keeps one timer handle per loop across many ticks', async () => {
+    const t = setup();
+    t.device.start();
+    await settle();
+    for (let i = 0; i < 5; i++) {
+      t.timers.fire(3000);
+      t.timers.fire(5000);
+      await settle();
+    }
+    expect(t.timers.queue.map((e) => e.ms).sort()).toEqual([3000, 5000]);
+  });
+
+  it('counts keep-alive and poll failures separately, so one of each is tolerated', async () => {
+    const t = setup();
+    t.device.start();
+    await settle();
+    t.cam.failing.push('/gopro/camera/keep_alive');
+    t.timers.fire(3000); // keep-alive miss 1
+    await settle();
+    t.cam.failing.length = 0;
+    t.cam.failing.push('/gopro/camera/state');
+    t.timers.fire(5000); // poll miss 1
+    await settle();
+    expect(t.last().status).toBe('ready');
+    expect(t.timers.queue.map((e) => e.ms).sort()).toEqual([3000, 5000]);
+  });
+
+  it('skips the status poll while a change is being applied', async () => {
+    const t = setup();
+    t.device.start();
+    await settle();
+    t.cam.log.length = 0;
+    t.cam.gated.push('/gopro/camera/digital_zoom');
+    const pending = t.device.set('zoom', 30);
+    await settle(); // the zoom call is in flight, the control reports busy
+    expect(t.control('zoom')?.disabled).toBe('Applying a change…');
+    t.timers.fire(5000);
+    await settle();
+    expect(t.cam.log).toEqual(['/gopro/camera/digital_zoom?percent=30']); // no status poll
+    t.cam.releaseGates();
+    await pending;
+    t.timers.fire(5000);
+    await settle();
+    expect(t.cam.log).toContain('/gopro/camera/state'); // polls again once idle
   });
 
   it('reports a lost camera after two missed keep-alives and reconnects with backoff', async () => {

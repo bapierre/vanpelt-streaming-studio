@@ -131,4 +131,39 @@ describe('module pages', () => {
     expect((await app.inject({ method: 'GET', url: '/m/alerts' })).statusCode).toBe(302);
     await app.close();
   });
+
+  it('answers 304 when a module asset matches its ETag', async () => {
+    const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { ModuleHost } = await import('./modules/host');
+    const root = await mkdtemp(join(tmpdir(), 'mods-'));
+    await mkdir(join(root, 'alerts', 'dist', 'assets'), { recursive: true });
+    await writeFile(
+      join(root, 'alerts', 'manifest.json'),
+      JSON.stringify({ id: 'alerts', name: 'Alerts', version: '1', overlays: [{ id: 'p', path: 'popup.html', width: 1, height: 1 }] }),
+    );
+    await writeFile(join(root, 'alerts', 'dist', 'popup.html'), '<html><head></head></html>');
+    await writeFile(join(root, 'alerts', 'dist', 'assets', 'popup.js'), 'console.log(1)');
+    const app = await createServer({
+      bus: new Bus(),
+      port: 0,
+      dev: false,
+      dashboardDir: '/nonexistent',
+      logger: false,
+      modules: await ModuleHost.discover(root),
+    });
+    const first = await app.inject({ method: 'GET', url: '/m/alerts/assets/popup.js' });
+    expect(first.statusCode).toBe(200);
+    expect(first.headers['cache-control']).toBe('no-cache');
+    const etag = first.headers.etag;
+    expect(etag).toBeTruthy();
+    const second = await app.inject({ method: 'GET', url: '/m/alerts/assets/popup.js', headers: { 'if-none-match': etag! } });
+    expect(second.statusCode).toBe(304);
+    expect(second.body).toBe('');
+    // HTML never gets an ETag: it carries the session token.
+    const page = await app.inject({ method: 'GET', url: '/m/alerts/popup.html' });
+    expect(page.headers.etag).toBeUndefined();
+    await app.close();
+  });
 });
