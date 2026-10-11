@@ -127,6 +127,14 @@ Video still flows camera → OBS; the hub only switches and tunes.
 - **Device controls** come from a driver: a Node process in `modules/camera-<model>/` (manifest `"driver": { "entry": "src/main.ts" }`) built on `@streamhub/camera-sdk`. The hub spawns it with a minimal environment and a per-run token, it connects to `/ws?driver=<id>&token=<t>`, and it may only send and receive `camera.driver.*` for its own cameras. Drivers describe their controls (select, range, toggle, action), so the dashboard renders new models without changes. Crashed drivers restart with backoff; a missing driver shows the camera as "not installed" and OBS-side controls keep working.
 - Shipped: `camera-gopro` (HERO12 over USB, Open GoPro HTTP API). The Sony A6400 is OBS-only (no public control API). Guides: `docs/cameras/`.
 
+### 11. Audio (`apps/hub/src/audio`)
+Mics are OBS audio inputs; OBS mixes, filters and records them, and the hub drives OBS.
+- Mics are listed in `.streamhub/audio.json` (id, name, OBS input, side). Each gets track 1 (the stream mix) plus one isolated track, 2–6 in list order, so at most five mics are isolated; later mics are mix-only. A stereo device carrying two people (interface, dual wireless receiver) becomes two inputs panned left and right.
+- On every OBS connect the hub keeps a "streamhub …" filter chain on each mic (gain, noise suppression, gate, EQ, compressor, limiter; after any filters the user added), sets each mic's tracks and panning, and writes the record-track mask and track names into the OBS profile. OBS reads those when a recording starts, so changes during a recording wait (`tracksPending`). Starting and stopping recordings belongs to the recording service.
+- `audio.state` (retained) carries every mic's fader, mute, monitoring, sync offset, filters and sound-check result, followed live from OBS events. `audio.levels` (about 15/s, not retained) comes from OBS's high-volume `InputVolumeMeters` subscription.
+- **Sound check:** fader to 0 dB, dynamics off, measure the median speech level for a few seconds, set the gain filter to reach the target (±20 dB per check), turn dynamics back on.
+- Simulated in tests (`apps/hub/src/testing/fake-obs-audio.ts`); never run against a real OBS in tests. Guide: `docs/audio/mics.md`.
+
 ## Config & secrets
 - `.env` (gitignored): `HUB_PORT`, `OBS_WS_URL`, `OBS_WS_PASSWORD`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_CHANNEL`, `YOUTUBE_API_KEY` / OAuth creds, `KICK_*`.
 - `config/` (committed, no secrets): sequences, platform colors, enabled connectors.
