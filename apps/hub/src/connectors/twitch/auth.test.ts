@@ -33,7 +33,7 @@ describe('TwitchAuth device flow', () => {
       expiresAt: 1000 + 1_800_000,
     });
     expect(fetchFn.calls[0]!.url).toBe('https://id.twitch.tv/oauth2/device');
-    expect(Object.fromEntries(fetchFn.calls[0]!.form)).toEqual({ client_id: 'cid', scopes: 'user:read:chat' });
+    expect(Object.fromEntries(fetchFn.calls[0]!.form)).toEqual({ client_id: 'cid', scopes: 'user:read:chat moderator:read:followers channel:read:subscriptions' });
   });
 
   it('polls until approved, then stores tokens with the validated identity', async () => {

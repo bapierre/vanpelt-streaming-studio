@@ -1,9 +1,17 @@
-import type { ConnectorStatus, EventPayload, KnownEventType } from '@streamhub/shared';
+import type { ConnectorStatus, EventPayload, KnownEventType, PlatformTotals } from '@streamhub/shared';
 import type { Bus } from '../../bus/bus';
 import { backoffDelay } from '../../util/backoff';
 import { describeError } from '../../util/errors';
 import { realTimer, type Timer } from '../../util/timer';
 import type { Connector, SocketFactory, SocketLike } from '../types';
+import {
+  twitchCheerAlert,
+  twitchFollowAlert,
+  twitchNotificationAlert,
+  type TwitchCheerChat,
+  type TwitchFollowEvent,
+  type TwitchNotificationEvent,
+} from './alerts';
 import { TwitchLoginRejectedError, type TwitchAuth } from './auth';
 import {
   normalizeTwitchClear,
@@ -13,17 +21,28 @@ import {
 } from './normalize';
 
 export const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
-export const TWITCH_SUBSCRIPTIONS = [
-  'channel.chat.message',
-  'channel.chat.message_delete',
-  'channel.chat.clear',
-  'channel.chat.clear_user_messages',
-] as const;
+type SubscriptionSpec = {
+  type: string;
+  version: string;
+  condition: 'chat' | 'moderator';
+  /** Set when an older sign-in may lack the scope: a refusal turns the feature off instead of failing. */
+  optional?: string;
+};
+
+export const TWITCH_SUBSCRIPTIONS: readonly SubscriptionSpec[] = [
+  { type: 'channel.chat.message', version: '1', condition: 'chat' },
+  { type: 'channel.chat.message_delete', version: '1', condition: 'chat' },
+  { type: 'channel.chat.clear', version: '1', condition: 'chat' },
+  { type: 'channel.chat.clear_user_messages', version: '1', condition: 'chat' },
+  { type: 'channel.chat.notification', version: '1', condition: 'chat' },
+  { type: 'channel.follow', version: '2', condition: 'moderator', optional: 'follower alerts' },
+];
 
 const KEEPALIVE_GRACE_MS = 5000;
 const VALIDATE_EVERY_MS = 60 * 60 * 1000;
 const SEEN_LIMIT = 1000;
 const RECONNECT_HINT = 'Reconnect Twitch in Settings → Platforms.';
+const TOTALS_EVERY_MS = 5 * 60 * 1000;
 
 type Frame = {
   metadata?: { message_id?: string; message_type?: string; message_timestamp?: string; subscription_type?: string };
@@ -55,6 +74,7 @@ export class TwitchConnector implements Connector {
   private retry: unknown = null;
   private watchdog: unknown = null;
   private validation: unknown = null;
+  private totals: unknown = null;
   private keepaliveMs = 10_000;
   private generation = 0;
   private readonly seen = new Set<string>();
@@ -85,8 +105,8 @@ export class TwitchConnector implements Connector {
   private shutdown() {
     this.stopped = true;
     this.generation++;
-    for (const handle of [this.retry, this.watchdog, this.validation]) if (handle !== null) this.timer.clear(handle);
-    this.retry = this.watchdog = this.validation = null;
+    for (const handle of [this.retry, this.watchdog, this.validation, this.totals]) if (handle !== null) this.timer.clear(handle);
+    this.retry = this.watchdog = this.validation = this.totals = null;
     const sockets = [this.socket, this.handover];
     this.socket = this.handover = null;
     sockets.forEach((s) => s?.close(1000));
@@ -173,10 +193,11 @@ export class TwitchConnector implements Connector {
       return;
     }
     try {
-      await this.subscribeAll(session.id);
+      const missing = await this.subscribeAll(session.id);
       if (socket !== this.socket) return;
       this.attempt = 0;
-      this.status('live');
+      this.status('live', missing.length ? `Reconnect Twitch to turn on ${missing.join(' and ')}.` : undefined);
+      if (this.totals === null) void this.refreshTotals();
     } catch (err) {
       if (socket !== this.socket) return;
       if (err instanceof TwitchLoginRejectedError) {
@@ -189,24 +210,61 @@ export class TwitchConnector implements Connector {
     }
   }
 
-  private async subscribeAll(sessionId: string) {
+  /** Returns the optional features Twitch refused (the sign-in predates their scope). */
+  private async subscribeAll(sessionId: string): Promise<string[]> {
     const userId = this.opts.auth.tokens()?.userId;
     if (!userId) throw new Error('Twitch is not connected');
-    for (const type of TWITCH_SUBSCRIPTIONS) {
+    const missing: string[] = [];
+    for (const sub of TWITCH_SUBSCRIPTIONS) {
+      const condition =
+        sub.condition === 'chat'
+          ? { broadcaster_user_id: userId, user_id: userId }
+          : { broadcaster_user_id: userId, moderator_user_id: userId };
       const res = await this.opts.auth.helix('/eventsub/subscriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type,
-          version: '1',
-          condition: { broadcaster_user_id: userId, user_id: userId },
+          type: sub.type,
+          version: sub.version,
+          condition,
           transport: { method: 'websocket', session_id: sessionId },
         }),
       });
-      if (res.status !== 202 && res.status !== 409) {
-        throw new Error(`Subscribing to ${type} failed (${res.status})`);
+      if (res.status === 202 || res.status === 409) continue;
+      if (sub.optional && res.status === 403) {
+        missing.push(sub.optional);
+        continue;
       }
+      throw new Error(`Subscribing to ${sub.type} failed (${res.status})`);
     }
+    return missing;
+  }
+
+  /** Follower and sub counts for goals. Best effort: a failure keeps the last numbers. */
+  private async refreshTotals() {
+    const generation = this.generation;
+    const userId = this.opts.auth.tokens()?.userId;
+    if (!userId) return;
+    const total = async (path: string) => {
+      try {
+        const res = await this.opts.auth.helix(`${path}?broadcaster_id=${encodeURIComponent(userId)}&first=1`);
+        if (!res.ok) return undefined;
+        const body = (await res.json()) as { total?: unknown };
+        return typeof body.total === 'number' && Number.isInteger(body.total) && body.total >= 0 ? body.total : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const [followers, subs] = await Promise.all([total('/channels/followers'), total('/subscriptions')]);
+    if (this.stopped || generation !== this.generation) return;
+    const totals: PlatformTotals = { platform: 'twitch' };
+    if (followers !== undefined) totals.followers = followers;
+    if (subs !== undefined) totals.subs = subs;
+    if (followers !== undefined || subs !== undefined) this.publish('platform.totals', totals);
+    this.totals = this.timer.set(() => {
+      this.totals = null;
+      if (!this.stopped) void this.refreshTotals();
+    }, TOTALS_EVERY_MS);
   }
 
   private onNotification(frame: Frame) {
@@ -216,12 +274,24 @@ export class TwitchConnector implements Connector {
     this.seen.add(id);
     if (this.seen.size > SEEN_LIMIT) this.seen.delete(this.seen.values().next().value as string);
 
+    const at = Date.now();
     switch (frame.metadata?.subscription_type) {
-      case 'channel.chat.message':
+      case 'channel.chat.message': {
         this.publish(
           'chat.message',
           normalizeTwitchMessage(event as unknown as TwitchChatEvent, frame.metadata.message_timestamp ?? ''),
         );
+        const cheer = twitchCheerAlert(event as unknown as TwitchCheerChat, at);
+        if (cheer) this.publish('alert.event', cheer);
+        return;
+      }
+      case 'channel.chat.notification': {
+        const alert = twitchNotificationAlert(event as unknown as TwitchNotificationEvent, at);
+        if (alert) this.publish('alert.event', alert);
+        return;
+      }
+      case 'channel.follow':
+        this.publish('alert.event', twitchFollowAlert(event as unknown as TwitchFollowEvent, id, at));
         return;
       case 'channel.chat.message_delete':
         this.publish('chat.deleted', normalizeTwitchDelete(event as { message_id: string }));

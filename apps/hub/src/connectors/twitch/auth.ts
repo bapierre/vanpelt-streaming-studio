@@ -2,7 +2,8 @@ import type { SecretsStore, TwitchSecrets } from '../../secrets/store';
 
 const ID_URL = 'https://id.twitch.tv/oauth2';
 const HELIX_URL = 'https://api.twitch.tv/helix';
-export const TWITCH_SCOPES = 'user:read:chat';
+/** Chat, plus follows (alerts) and the subscriber count (goals). Subs, cheers and raids arrive through chat. */
+export const TWITCH_SCOPES = 'user:read:chat moderator:read:followers channel:read:subscriptions';
 
 export class TwitchAuthError extends Error {}
 

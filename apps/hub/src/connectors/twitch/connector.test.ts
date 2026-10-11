@@ -65,6 +65,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
+const subBody = (init: unknown) => (init as RequestInit | undefined)?.body?.toString();
 const statuses = () => events.filter((e) => e.type === 'platform.status').map((e) => e.payload);
 const lastStatus = () => statuses().at(-1);
 const ofType = (type: string) => events.filter((e) => e.type === type).map((e) => e.payload);
@@ -77,18 +78,26 @@ describe('TwitchConnector', () => {
     expect(lastStatus()).toMatchObject({ platform: 'twitch', status: 'disconnected' });
   });
 
-  it('subscribes to the four chat events on welcome, then goes live', async () => {
+  it('subscribes to chat, notifications and follows on welcome, then goes live', async () => {
     connector.start();
     expect(sockets[0]!.url).toBe('wss://eventsub.wss.twitch.tv/ws');
     sockets[0]!.frame(welcome());
     await settle();
-    const bodies = helix.mock.calls.map(([path, init]) => ({ path, body: JSON.parse((init as RequestInit).body as string) }));
+    const bodies = helix.mock.calls
+      .filter(([path]) => path === '/eventsub/subscriptions')
+      .map(([path, init]) => ({ path, body: JSON.parse((init as RequestInit).body as string) }));
     expect(bodies.map((b) => b.body.type)).toEqual([
       'channel.chat.message',
       'channel.chat.message_delete',
       'channel.chat.clear',
       'channel.chat.clear_user_messages',
+      'channel.chat.notification',
+      'channel.follow',
     ]);
+    expect(bodies[5]!.body).toMatchObject({
+      version: '2',
+      condition: { broadcaster_user_id: '1971641', moderator_user_id: '1971641' },
+    });
     expect(bodies[0]).toEqual({
       path: '/eventsub/subscriptions',
       body: {
@@ -157,7 +166,7 @@ describe('TwitchConnector', () => {
     timer.fire(1000);
     sockets[1]!.frame(welcome('S2'));
     await settle();
-    expect(helix.mock.calls.filter(([, init]) => (init as RequestInit).body!.toString().includes('S2'))).toHaveLength(4);
+    expect(helix.mock.calls.filter(([, init]) => subBody(init)?.includes('S2'))).toHaveLength(6);
   });
 
   it('hands over to the reconnect url without resubscribing', async () => {
@@ -263,7 +272,7 @@ describe('TwitchConnector', () => {
     timer.fire(1000);
     sockets[2]!.frame(welcome('S3'));
     await settle();
-    expect(helix.mock.calls.filter(([, init]) => (init as RequestInit).body!.toString().includes('S3'))).toHaveLength(4);
+    expect(helix.mock.calls.filter(([, init]) => subBody(init)?.includes('S3'))).toHaveLength(6);
     expect(lastStatus()).toMatchObject({ status: 'live' });
     expect(sockets[0]!.closed).toBe(true);
   });
@@ -338,5 +347,89 @@ describe('TwitchConnector', () => {
     expect(sockets[0]!.closed).toBe(true);
     expect(lastStatus()).toMatchObject({ status: 'connecting', detail: expect.stringContaining('keepalive') });
     expect(timer.has(1000)).toBe(true);
+  });
+});
+
+describe('TwitchConnector alerts', () => {
+  const notification = (id: string, type: string, event: object) => ({
+    metadata: { message_id: id, message_type: 'notification', message_timestamp: '2023-01-01T00:00:00Z', subscription_type: type },
+    payload: { event },
+  });
+  let alerts: unknown[];
+  let totals: unknown[];
+  beforeEach(() => {
+    alerts = [];
+    totals = [];
+    bus.subscribe(['alert.event'], (e) => alerts.push(e.payload));
+    bus.subscribe(['platform.totals'], (e) => totals.push(e.payload));
+  });
+
+  it('publishes subs, follows and cheers as alerts, once each', async () => {
+    connector.start();
+    sockets[0]!.frame(welcome());
+    await settle();
+    const sub = notification('n1', 'channel.chat.notification', {
+      chatter_user_id: '7',
+      chatter_user_name: 'Ada',
+      message_id: 'm1',
+      message: { text: '' },
+      notice_type: 'sub',
+      sub: { sub_tier: '1000', is_prime: false },
+    });
+    sockets[0]!.frame(sub);
+    sockets[0]!.frame(sub);
+    sockets[0]!.frame(notification('n2', 'channel.follow', { user_id: '8', user_name: 'Bob', followed_at: '2023-01-01T00:00:00Z' }));
+    sockets[0]!.frame(
+      notification('n3', 'channel.chat.message', {
+        ...chatMessage.payload.event,
+        message_id: 'm3',
+        message: { text: 'Cheer100 nice', fragments: [{ type: 'cheermote', text: 'Cheer100' }, { type: 'text', text: ' nice' }] },
+        cheer: { bits: 100 },
+      }),
+    );
+    expect(alerts).toEqual([
+      expect.objectContaining({ id: 'twitch:m1', kind: 'sub', tier: '1', user: { id: '7', name: 'Ada' } }),
+      expect.objectContaining({ id: 'twitch:n2', kind: 'follow', user: { id: '8', name: 'Bob' } }),
+      expect.objectContaining({ id: 'twitch:cheer:m3', kind: 'cheer', amount: 100, message: 'nice' }),
+    ]);
+  });
+
+  it('goes live without follower alerts when an older sign-in lacks the scope', async () => {
+    helix.mockImplementation(async (path: string, init?: RequestInit) =>
+      new Response(null, { status: init?.body?.toString().includes('channel.follow') ? 403 : 202 }),
+    );
+    connector.start();
+    sockets[0]!.frame(welcome());
+    await settle();
+    expect(lastStatus()).toMatchObject({ status: 'live', detail: 'Reconnect Twitch to turn on follower alerts.' });
+  });
+
+  it('publishes follower and sub totals, then refreshes them every 5 minutes', async () => {
+    helix.mockImplementation(async (path: string) => {
+      if (path.startsWith('/channels/followers')) return Response.json({ total: 1234, data: [] });
+      if (path.startsWith('/subscriptions')) return Response.json({ total: 56, data: [] });
+      return new Response(null, { status: 202 });
+    });
+    connector.start();
+    sockets[0]!.frame(welcome());
+    await settle();
+    expect(helix).toHaveBeenCalledWith('/channels/followers?broadcaster_id=1971641&first=1');
+    expect(totals).toEqual([{ platform: 'twitch', followers: 1234, subs: 56 }]);
+    sockets[0]!.frame({ metadata: { message_id: 'k', message_type: 'session_keepalive' }, payload: {} });
+    timer.fire(300_000);
+    await settle();
+    expect(totals).toHaveLength(2);
+  });
+
+  it('leaves out the sub count when Twitch refuses it', async () => {
+    helix.mockImplementation(async (path: string) => {
+      if (path.startsWith('/channels/followers')) return Response.json({ total: 9 });
+      if (path.startsWith('/subscriptions')) return new Response(null, { status: 403 });
+      return new Response(null, { status: 202 });
+    });
+    connector.start();
+    sockets[0]!.frame(welcome());
+    await settle();
+    expect(totals).toEqual([{ platform: 'twitch', followers: 9 }]);
   });
 });
