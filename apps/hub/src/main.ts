@@ -20,6 +20,9 @@ import { createXApi } from './connectors/x/api';
 import { XAuth } from './connectors/x/auth';
 import { XConnector } from './connectors/x/connector';
 import { DestinationsService } from './destinations/service';
+import { loadHeadsetsConfig, saveHeadsetsConfig } from './headsets/config';
+import { listOutputDevices } from './headsets/outputs';
+import { HeadsetService } from './headsets/service';
 import { ObsBridge, type ObsClient } from './obs/bridge';
 import { RecordingService } from './recording/service';
 import { loadObsSettings, ObsSettingsService } from './obs/settings';
@@ -107,6 +110,13 @@ const audio = new AudioService({
   config: await loadAudioConfig(paths.audio),
   save: (c) => saveAudioConfig(paths.audio, c),
 });
+const headsets = new HeadsetService({
+  bus,
+  obs,
+  config: await loadHeadsetsConfig(paths.headsets),
+  save: (c) => saveHeadsetsConfig(paths.headsets, c),
+  listOutputs: () => listOutputDevices(),
+});
 const recording = new RecordingService({ bus, obs, cameras: cameraConfigs });
 const driverHost = new DriverHost({
   drivers,
@@ -136,6 +146,7 @@ try {
 }
 cameras.start();
 audio.start();
+headsets.start();
 recording.start();
 obsSettings.start();
 destinations.start();
@@ -151,6 +162,7 @@ const shutdown = async () => {
   setTimeout(() => process.exit(1), 3000).unref();
   cameras.stop();
   audio.stop();
+  headsets.stop();
   recording.stop();
   obsSettings.stop();
   destinations.stop();

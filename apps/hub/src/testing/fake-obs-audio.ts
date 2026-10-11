@@ -33,6 +33,7 @@ export const FILTER_DEFAULTS: Record<string, Record<string, unknown>> = {
   basic_eq_filter: { low: 0, mid: 0, high: 0 },
   compressor_filter: { ratio: 10, threshold: -18, attack_time: 6, release_time: 60, output_gain: 0, sidechain_source: 'none' },
   limiter_filter: { threshold: -6, release_time: 60 },
+  audio_monitor: { volume: 100, device: 'default' },
 };
 
 export function makeInput(over: Partial<FakeInput> = {}): FakeInput {
@@ -66,6 +67,8 @@ export class FakeObsAudio extends EventEmitter {
     { itemName: 'Rode NT-USB', itemEnabled: true, itemValue: 'AppleUSBAudioEngine:RODE:NT-USB' },
     { itemName: 'Unplugged mic', itemEnabled: false, itemValue: 'gone' },
   ];
+  /** Filter kinds OBS has; drop one to act as if its plugin is not installed. */
+  filterKinds = Object.keys(FILTER_DEFAULTS);
   recording = false;
   /** Request types to fail with an error, for testing failure paths. */
   failing = new Set<string>();
@@ -148,12 +151,20 @@ export class FakeObsAudio extends EventEmitter {
         if (!d) throw new ObsRequestError(NOT_FOUND, 'unknown filter kind');
         return { defaultFilterSettings: d };
       }
+      case 'GetSourceFilterKindList':
+        return { sourceFilterKinds: this.filterKinds };
       case 'CreateSourceFilter': {
         const kind = String(data.filterKind);
-        if (!FILTER_DEFAULTS[kind]) throw new ObsRequestError(NOT_FOUND, 'unknown filter kind');
+        if (!FILTER_DEFAULTS[kind] || !this.filterKinds.includes(kind)) throw new ObsRequestError(NOT_FOUND, 'unknown filter kind');
         const i = this.input(data.sourceName);
         i.filters.push({ name: String(data.filterName), kind, enabled: true, settings: { ...(data.filterSettings as object) } });
         this.emit('SourceFilterCreated', { sourceName: data.sourceName, filterName: data.filterName });
+        return {};
+      }
+      case 'RemoveSourceFilter': {
+        const list = this.input(data.sourceName).filters;
+        list.splice(list.indexOf(this.filter(data.sourceName, data.filterName)), 1);
+        this.emit('SourceFilterRemoved', { sourceName: data.sourceName, filterName: data.filterName });
         return {};
       }
       case 'SetSourceFilterEnabled':

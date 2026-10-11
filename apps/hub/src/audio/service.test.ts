@@ -124,6 +124,15 @@ describe('AudioService', () => {
     expect(mic('host').filters.gain.db).toBe(5);
   });
 
+  it('does not re-read the chain when a headset send changes', async () => {
+    await connect();
+    obs.calls = [];
+    obs.emit('SourceFilterSettingsChanged', { sourceName: 'Host mic', filterName: 'streamhub hp cohost' });
+    obs.emit('SourceFilterCreated', { sourceName: 'Host mic', filterName: 'streamhub hp cohost' });
+    await svc.idle();
+    expect(obs.callsOf('GetSourceFilterList')).toEqual([]);
+  });
+
   it('sends meter levels per mic at most every LEVELS_MS, keeping the loudest frame', async () => {
     await connect();
     obs.meters({ 'Host mic': [[dbToMul(-30), dbToMul(-20), dbToMul(-20)]] });

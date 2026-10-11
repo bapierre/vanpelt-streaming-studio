@@ -61,15 +61,15 @@ export async function saveAudioConfig(path: string, cfg: AudioConfig): Promise<v
   await rename(tmp, path);
 }
 
-/** A unique slug for a new mic, derived from its name. */
-export function micIdFor(name: string, taken: ReadonlySet<string>): string {
+/** A unique slug for a new mic (or anything else named by the streamer), derived from its name. */
+export function micIdFor(name: string, taken: ReadonlySet<string>, fallback = 'mic'): string {
   const base =
     name
       .toLowerCase()
       .normalize('NFKD')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
-      .slice(0, 32) || 'mic';
+      .slice(0, 32) || fallback;
   if (!taken.has(base)) return base;
   for (let i = 2; ; i++) if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
 }

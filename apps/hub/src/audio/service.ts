@@ -15,6 +15,7 @@ import {
 } from '@streamhub/shared';
 import type { Bus } from '../bus/bus';
 import type { ObsCalls } from '../cameras/obs-side';
+import { isHeadsetFilter } from '../headsets/monitor';
 import { describeError } from '../util/errors';
 import { realTimer, type Timer } from '../util/timer';
 import { micIdFor, type AudioConfig, type MicConfig } from './config';
@@ -311,7 +312,10 @@ export class AudioService {
       'SourceFilterRemoved',
       'SourceFilterNameChanged',
     ]) {
-      on<{ sourceName: string }>(event, (d) => this.queueRefresh(this.byInput(d.sourceName)));
+      on<{ sourceName: string; filterName?: string }>(event, (d) => {
+        // Headset sends live on the same inputs but are not part of the mic's chain.
+        if (!isHeadsetFilter(d.filterName)) this.queueRefresh(this.byInput(d.sourceName));
+      });
     }
     on<{ inputName: string }>('InputRemoved', (d) => {
       const e = this.byInput(d.inputName);
