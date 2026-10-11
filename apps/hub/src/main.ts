@@ -21,6 +21,7 @@ import { XAuth } from './connectors/x/auth';
 import { XConnector } from './connectors/x/connector';
 import { DestinationsService } from './destinations/service';
 import { ObsBridge, type ObsClient } from './obs/bridge';
+import { RecordingService } from './recording/service';
 import { loadObsSettings, ObsSettingsService } from './obs/settings';
 import { runtimePaths } from './runtime';
 import { SecretsStore } from './secrets/store';
@@ -106,6 +107,7 @@ const audio = new AudioService({
   config: await loadAudioConfig(paths.audio),
   save: (c) => saveAudioConfig(paths.audio, c),
 });
+const recording = new RecordingService({ bus, obs, cameras: cameraConfigs });
 const driverHost = new DriverHost({
   drivers,
   cameras: cameraConfigs,
@@ -134,6 +136,7 @@ try {
 }
 cameras.start();
 audio.start();
+recording.start();
 obsSettings.start();
 destinations.start();
 obs.start();
@@ -148,6 +151,7 @@ const shutdown = async () => {
   setTimeout(() => process.exit(1), 3000).unref();
   cameras.stop();
   audio.stop();
+  recording.stop();
   obsSettings.stop();
   destinations.stop();
   await Promise.all([obs.stop(), manager.stopAll(), driverHost.stop()]);
