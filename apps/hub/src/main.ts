@@ -1,6 +1,8 @@
 import { config as loadDotenv } from 'dotenv';
 import OBSWebSocket, { EventSubscription } from 'obs-websocket-js';
 import { WebSocket } from 'ws';
+import { loadAlertsFile, saveAlertsFile } from './alerts/config';
+import { AlertService } from './alerts/service';
 import { loadAudioConfig, saveAudioConfig } from './audio/config';
 import { AudioService } from './audio/service';
 import { Bus } from './bus/bus';
@@ -118,6 +120,11 @@ const headsets = new HeadsetService({
   listOutputs: () => listOutputDevices(),
 });
 const recording = new RecordingService({ bus, obs, cameras: cameraConfigs });
+const alerts = new AlertService({
+  bus,
+  file: await loadAlertsFile(paths.alerts),
+  save: (f) => saveAlertsFile(paths.alerts, f),
+});
 const driverHost = new DriverHost({
   drivers,
   cameras: cameraConfigs,
@@ -148,6 +155,7 @@ cameras.start();
 audio.start();
 headsets.start();
 recording.start();
+alerts.start();
 obsSettings.start();
 destinations.start();
 obs.start();
@@ -164,6 +172,7 @@ const shutdown = async () => {
   audio.stop();
   headsets.stop();
   recording.stop();
+  alerts.stop();
   obsSettings.stop();
   destinations.stop();
   await Promise.all([obs.stop(), manager.stopAll(), driverHost.stop()]);

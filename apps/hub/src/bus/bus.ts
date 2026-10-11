@@ -20,12 +20,16 @@ const RETAINED_TYPES = new Set([
   'audio.devices',
   'recording.state',
   'headsets.state',
+  'alert.config',
+  'alert.recent',
+  'goal.state',
 ]);
 
 /** Retained once per value of the named payload field. */
 const KEYED_RETAINED: Record<string, string> = {
   'platform.status': 'platform',
   'platform.live': 'platform',
+  'platform.totals': 'platform',
   'connections.state': 'platform',
   'camera.state': 'id',
 };

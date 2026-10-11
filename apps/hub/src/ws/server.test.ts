@@ -258,6 +258,20 @@ describe('camera drivers', () => {
     await sync(c);
     expect(seen).toEqual([{ id: 'guest', source: 'mic:host', on: false }]);
   });
+
+  it('lets dashboards send alert and goal commands, but not fake an alert', async () => {
+    const seen: string[] = [];
+    bus.subscribe(['alert.', 'goal.'], (e) => seen.push(e.type));
+    const c = await open(ORIGIN);
+    c.send({ op: 'publish', event: { type: 'alert.cmd.test', payload: { kind: 'raid' } } });
+    c.send({ op: 'publish', event: { type: 'goal.cmd.reset', payload: { id: 'subs' } } });
+    c.send({
+      op: 'publish',
+      event: { type: 'alert.event', payload: { id: 'x', kind: 'tip', platform: 'youtube', user: { id: '1', name: 'A' }, at: 1 } },
+    });
+    expect(await c.next()).toMatchObject({ op: 'error', code: 'forbidden' });
+    expect(seen).toEqual(['alert.cmd.test', 'goal.cmd.reset']);
+  });
 });
 
 describe('robustness', () => {

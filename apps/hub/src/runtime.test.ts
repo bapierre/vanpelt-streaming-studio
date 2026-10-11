@@ -28,6 +28,7 @@ describe('runtimePaths', () => {
       cameras: join('/app/data', '.streamhub/cameras.json'),
       audio: join('/app/data', '.streamhub/audio.json'),
       headsets: join('/app/data', '.streamhub/headsets.json'),
+      alerts: join('/app/data', '.streamhub/alerts.json'),
       modules: '/app/resources/modules',
       dashboard: '/app/resources/dashboard',
       proto: '/app/resources/stream_list.proto',
