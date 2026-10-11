@@ -4,12 +4,13 @@ import {
   ClientOpSchema,
   topicMatches,
   type Envelope,
+  type ModuleManifest,
   type ErrorCode,
   type ServerMessage,
 } from '@streamhub/shared';
 import type { Bus } from '../bus/bus';
 
-/** Event prefixes a dashboard client may publish. Modules get their own rules in M4. */
+/** Event prefixes a dashboard client may publish. Module pages follow their manifest (moduleRole). */
 export const DASHBOARD_PUBLISHABLE = [
   'obs.cmd.',
   'show.',
@@ -31,7 +32,15 @@ export const MAX_MESSAGE_BYTES = 64 * 1024;
 /** Returns the camera ids the driver owns, or null when the token is not valid for that driver. */
 export type AuthorizeDriver = (driverId: string, token: string) => string[] | null;
 
-export type WsOptions = { bus: Bus; allowedOrigins: string[]; authorizeDriver?: AuthorizeDriver };
+/** Returns the module's manifest, or null when the token is not the one its pages were served with. */
+export type AuthorizeModule = (moduleId: string, token: string) => ModuleManifest | null;
+
+export type WsOptions = {
+  bus: Bus;
+  allowedOrigins: string[];
+  authorizeDriver?: AuthorizeDriver;
+  authorizeModule?: AuthorizeModule;
+};
 
 type Role = {
   source: string;
@@ -56,6 +65,19 @@ function driverRole(driverId: string, cameraIds: string[]): Role {
     source: `driver:${driverId}`,
     canPublish: (type, payload) => type === 'camera.driver.state' && owns(payload),
     canReceive: (e) => (e.type === 'camera.driver.cmd.set' || e.type === 'camera.driver.cmd.record') && owns(e.payload),
+  };
+}
+
+/** A module page receives only what its manifest subscribes to and publishes only `module.<id>.*` it declared. */
+export function moduleRole(manifest: ModuleManifest): Role {
+  const own = `module.${manifest.id}.`;
+  return {
+    source: `module:${manifest.id}`,
+    canPublish: (type) => type.startsWith(own) && topicMatches(manifest.publishes, type),
+    canReceive: (e) =>
+      topicMatches(manifest.subscribes, e.type) &&
+      !startsWithAny(e.type, NEVER_FORWARDED) &&
+      !startsWithAny(e.type, DRIVER_ONLY),
   };
 }
 
@@ -89,6 +111,15 @@ export function attachWebSocket(server: Server, opts: WsOptions): WebSocketServe
         return;
       }
       role = driverRole(driverId, cameraIds);
+    }
+    const moduleId = params.get('module');
+    if (moduleId !== null) {
+      const manifest = opts.authorizeModule?.(moduleId, params.get('token') ?? '');
+      if (!manifest) {
+        socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+        return;
+      }
+      role = moduleRole(manifest);
     }
     wss.handleUpgrade(req, socket, head, (ws) => handleClient(ws, opts.bus, role));
   });

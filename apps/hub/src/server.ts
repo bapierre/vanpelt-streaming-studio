@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { Bus } from './bus/bus';
+import type { ModuleHost } from './modules/host';
 import { attachWebSocket, type AuthorizeDriver } from './ws/server';
 
 export type ServerOptions = {
@@ -13,6 +14,7 @@ export type ServerOptions = {
   youtubeCallback?: (query: Record<string, string | undefined>) => Promise<string>;
   xCallback?: (query: Record<string, string | undefined>) => Promise<string>;
   authorizeDriver?: AuthorizeDriver;
+  modules?: ModuleHost;
 };
 
 export function allowedOrigins(port: number, dev: boolean): string[] {
@@ -40,6 +42,20 @@ export async function createServer(opts: ServerOptions): Promise<FastifyInstance
     );
   }
 
+  const modules = opts.modules;
+  if (modules) {
+    app.get('/m/:id', async (req, reply) => reply.redirect(`/m/${encodeURIComponent((req.params as { id: string }).id)}/`));
+    app.get('/m/:id/*', async (req, reply) => {
+      const params = req.params as { id: string; '*': string };
+      const file = await modules.serve(params.id, params['*']);
+      reply.header('X-Content-Type-Options', 'nosniff');
+      if (file.status === 404) return reply.code(404).type('text/plain; charset=utf-8').send(file.body);
+      // Pages carry this run's session token, so they must never be cached.
+      reply.header('Cache-Control', file.type.startsWith('text/html') ? 'no-store' : 'no-cache');
+      return reply.type(file.type).send(file.body);
+    });
+  }
+
   if (existsSync(opts.dashboardDir)) {
     await app.register(fastifyStatic, { root: opts.dashboardDir });
   } else {
@@ -54,6 +70,7 @@ export async function createServer(opts: ServerOptions): Promise<FastifyInstance
     bus: opts.bus,
     allowedOrigins: allowedOrigins(opts.port, opts.dev),
     authorizeDriver: opts.authorizeDriver,
+    authorizeModule: modules ? (id, token) => modules.authorize(id, token) : undefined,
   });
   // Upgraded sockets keep the HTTP server open, so close them before Fastify waits on it.
   app.addHook('preClose', async () => {

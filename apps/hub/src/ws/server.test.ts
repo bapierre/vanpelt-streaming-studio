@@ -9,6 +9,15 @@ import { Bus } from '../bus/bus';
 import { attachWebSocket, MAX_MESSAGE_BYTES } from './server';
 
 const ORIGIN = 'http://127.0.0.1:4747';
+const ALERTS_MANIFEST = {
+  id: 'alerts',
+  name: 'Alerts',
+  version: '0.1.0',
+  web: 'dist',
+  overlays: [{ id: 'popup', path: 'popup.html', width: 1920, height: 1080 }],
+  subscribes: ['alert.show', 'alert.hide', 'goal.state'],
+  publishes: ['module.alerts.ready'],
+};
 
 type TestClient = {
   ws: WebSocket;
@@ -28,6 +37,7 @@ beforeEach(async () => {
     bus,
     allowedOrigins: [ORIGIN],
     authorizeDriver: (id, token) => (id === 'camera-gopro' && token === 'good' ? ['gopro'] : null),
+    authorizeModule: (id, token) => (id === 'alerts' && token === 'tok' ? ALERTS_MANIFEST : null),
   });
   await new Promise<void>((r) => http.listen(0, '127.0.0.1', r));
   port = (http.address() as AddressInfo).port;
@@ -288,5 +298,35 @@ describe('robustness', () => {
       sock.on('error', () => resolve());
     });
     await expect(open(ORIGIN)).resolves.toBeDefined();
+  });
+});
+
+describe('module pages', () => {
+  it('refuses a module connection without its session token', async () => {
+    await expect(open(ORIGIN, '?module=alerts&token=bad')).rejects.toThrow('HTTP 403');
+    await expect(open(ORIGIN, '?module=other&token=tok')).rejects.toThrow('HTTP 403');
+  });
+
+  it('receives only what the manifest subscribes to', async () => {
+    const c = await open(ORIGIN, '?module=alerts&token=tok');
+    c.send({ op: 'subscribe', topics: ['*'] });
+    await sync(c);
+    bus.publish({ type: 'chat.message', payload: chatMessage(), source: 'test' });
+    bus.publish({ type: 'goal.state', payload: { goals: [] }, source: 'test' });
+    expect(await c.next()).toMatchObject({ type: 'goal.state' });
+    c.send({ op: 'history', reqId: 'h', topic: 'chat.message', limit: 5 });
+    expect(await c.next()).toEqual({ op: 'history-result', reqId: 'h', events: [] });
+  });
+
+  it('publishes only the module events it declared', async () => {
+    const seen: string[] = [];
+    bus.subscribe(['*'], (e) => seen.push(`${e.source} ${e.type}`));
+    const c = await open(ORIGIN, '?module=alerts&token=tok');
+    c.send({ op: 'publish', event: { type: 'module.alerts.ready', payload: {} } });
+    c.send({ op: 'publish', event: { type: 'module.alerts.other', payload: {} } });
+    expect(await c.next()).toMatchObject({ op: 'error', code: 'forbidden' });
+    c.send({ op: 'publish', event: { type: 'alert.cmd.skip', payload: {} } });
+    expect(await c.next()).toMatchObject({ op: 'error', code: 'forbidden' });
+    expect(seen).toEqual(['module:alerts module.alerts.ready']);
   });
 });

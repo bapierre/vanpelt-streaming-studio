@@ -4,6 +4,7 @@ export * from './cameras';
 export * from './envelope';
 export * from './events';
 export * from './headsets';
+export * from './modules';
 export * from './protocol';
 export * from './recording';
 export * from './topics';

@@ -100,3 +100,35 @@ describe('X OAuth callback', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+describe('module pages', () => {
+  it('serves a module page with its session and refuses traversal', async () => {
+    const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { ModuleHost } = await import('./modules/host');
+    const root = await mkdtemp(join(tmpdir(), 'mods-'));
+    await mkdir(join(root, 'alerts', 'dist'), { recursive: true });
+    await writeFile(
+      join(root, 'alerts', 'manifest.json'),
+      JSON.stringify({ id: 'alerts', name: 'Alerts', version: '1', overlays: [{ id: 'p', path: 'popup.html', width: 1, height: 1 }] }),
+    );
+    await writeFile(join(root, 'alerts', 'dist', 'popup.html'), '<html><head></head></html>');
+    const app = await createServer({
+      bus: new Bus(),
+      port: 0,
+      dev: false,
+      dashboardDir: '/nonexistent',
+      logger: false,
+      modules: await ModuleHost.discover(root),
+    });
+    const page = await app.inject({ method: 'GET', url: '/m/alerts/popup.html' });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers['cache-control']).toBe('no-store');
+    expect(page.body).toContain('window.__STREAMHUB__');
+    expect((await app.inject({ method: 'GET', url: '/m/alerts/../manifest.json' })).body).not.toContain('overlays');
+    expect((await app.inject({ method: 'GET', url: '/m/alerts/%2e%2e/manifest.json' })).body).not.toContain('overlays');
+    expect((await app.inject({ method: 'GET', url: '/m/alerts/..%2fmanifest.json' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/m/alerts' })).statusCode).toBe(302);
+    await app.close();
+  });
+});

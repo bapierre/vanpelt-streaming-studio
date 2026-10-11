@@ -27,6 +27,7 @@ import {
   HeadsetSendPatchSchema,
   HeadsetsStateSchema,
 } from './headsets';
+import { ModulesListSchema } from './modules';
 import { RecordingSessionSchema } from './recording';
 
 export const PlatformSchema = z.enum(['twitch', 'youtube', 'kick', 'x']);
@@ -201,6 +202,7 @@ export const EventSchemas = {
   'goal.cmd.remove': z.object({ id: GoalIdSchema }),
   /** Starts the count again: from zero for a `stream` goal, and for a `total` tips goal. */
   'goal.cmd.reset': z.object({ id: GoalIdSchema }),
+  'modules.list': ModulesListSchema,
 } as const;
 
 export type KnownEventType = keyof typeof EventSchemas;

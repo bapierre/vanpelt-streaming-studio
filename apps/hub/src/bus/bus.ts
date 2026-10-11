@@ -23,6 +23,7 @@ const RETAINED_TYPES = new Set([
   'alert.config',
   'alert.recent',
   'goal.state',
+  'modules.list',
 ]);
 
 /** Retained once per value of the named payload field. */

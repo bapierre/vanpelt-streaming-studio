@@ -25,6 +25,7 @@ import { DestinationsService } from './destinations/service';
 import { loadHeadsetsConfig, saveHeadsetsConfig } from './headsets/config';
 import { listOutputDevices } from './headsets/outputs';
 import { HeadsetService } from './headsets/service';
+import { ModuleHost } from './modules/host';
 import { ObsBridge, type ObsClient } from './obs/bridge';
 import { RecordingService } from './recording/service';
 import { loadObsSettings, ObsSettingsService } from './obs/settings';
@@ -100,6 +101,7 @@ const destinations = new DestinationsService({ bus, store, obs });
 
 const cameraConfigs = await loadCameras(paths.cameras);
 const drivers = await discoverDrivers(paths.modules);
+const modules = await ModuleHost.discover(paths.modules);
 const cameras = new CameraService({
   bus,
   obs,
@@ -140,6 +142,7 @@ const app = await createServer({
   youtubeCallback: (q) => connections.handleYouTubeCallback(q),
   xCallback: (q) => connections.handleXCallback(q),
   authorizeDriver: (id, token) => driverHost.authorize(id, token),
+  modules,
 });
 
 try {
@@ -151,6 +154,7 @@ try {
   }
   throw err;
 }
+bus.publish({ type: 'modules.list', payload: modules.list(`http://${cfg.host}:${cfg.port}`), source: 'hub' });
 cameras.start();
 audio.start();
 headsets.start();
