@@ -6,6 +6,7 @@ import { realTimer, type Timer } from '../../util/timer';
 import type { Connector } from '../types';
 import { YouTubeApiError, type ChatStream, type YouTubeApi } from './api';
 import { YouTubeAuthError, type TokenSource } from './auth';
+import { youtubeAlert } from './alerts';
 import { normalizeYouTubeItem, type YtListResponse } from './normalize';
 
 const BACKLOG_MS = 5000;
@@ -14,6 +15,8 @@ const STABLE_MS = 30_000;
 const RATE_BACKOFF_MS = 60_000;
 const SEEN_LIMIT = 2000;
 const MIN_POLL_MS = 1000;
+/** channels.list costs 1 quota unit; the count is rounded anyway, so it changes rarely. */
+const TOTALS_EVERY_MS = 10 * 60 * 1000;
 
 export type YouTubeConnectorOptions = {
   bus: Bus;
@@ -48,6 +51,7 @@ export class YouTubeConnector implements Connector {
   private chat: ActiveChat | null = null;
   private attempt = 0;
   private current: ConnectorStatus | null = null;
+  private totalsAt = -Infinity;
   private readonly seen = new Set<string>();
   private readonly timer: Timer;
   private readonly rand: () => number;
@@ -117,6 +121,7 @@ export class YouTubeConnector implements Connector {
     const gen = this.generation;
     try {
       const token = await this.opts.tokens.accessToken();
+      void this.refreshTotals(token);
       const found = await this.opts.api.findActiveChat(token);
       if (gen !== this.generation) return;
       this.attempt = 0;
@@ -131,6 +136,20 @@ export class YouTubeConnector implements Connector {
     } catch (err) {
       if (gen === this.generation)
         this.guard('error handling failed:', () => this.onError(err, () => void this.findChat()));
+    }
+  }
+
+  /** Best effort, on the find-chat cadence but at most every 10 minutes. */
+  private async refreshTotals(token: string) {
+    if (!this.opts.api.channelStats || this.now() - this.totalsAt < TOTALS_EVERY_MS) return;
+    this.totalsAt = this.now();
+    const gen = this.generation;
+    try {
+      const stats = await this.opts.api.channelStats(token);
+      if (gen !== this.generation || stats.subscribers === undefined) return;
+      this.publish('platform.totals', { platform: 'youtube', followers: stats.subscribers, approximate: true });
+    } catch (err) {
+      console.warn('[youtube] could not read the subscriber count:', describeError(err));
     }
   }
 
@@ -229,21 +248,26 @@ export class YouTubeConnector implements Connector {
     const channel = this.opts.channel();
     for (const item of r.items ?? []) {
       const n = normalizeYouTubeItem(item, channel, this.now);
-      if (!n) continue;
-      if (n.kind === 'ended') {
+      const published = Date.parse(item.snippet?.publishedAt ?? '');
+      const alert = youtubeAlert(item, Number.isNaN(published) ? this.now() : published);
+      if (n?.kind === 'ended') {
         this.endChat();
         return;
       }
-      if (n.kind === 'deleted') this.publish('chat.deleted', { id: n.id });
-      if (n.kind === 'cleared')
+      if (n?.kind === 'deleted') this.publish('chat.deleted', { id: n.id });
+      if (n?.kind === 'cleared')
         this.publish('chat.cleared', { platform: 'youtube', authorId: n.authorId });
-      if (n.kind === 'message') {
-        if (this.seen.has(n.message.id)) continue;
-        this.seen.add(n.message.id);
+      const message = n?.kind === 'message' ? n.message : null;
+      if (message || alert) {
+        // Both ids are `youtube:<item id>`.
+        const id = message?.id ?? alert!.id;
+        if (this.seen.has(id)) continue;
+        this.seen.add(id);
         if (this.seen.size > SEEN_LIMIT)
           this.seen.delete(this.seen.values().next().value as string);
-        if (n.message.sentAt < chat.connectedAt - BACKLOG_MS) continue;
-        this.publish('chat.message', n.message);
+        if ((message?.sentAt ?? alert!.at) < chat.connectedAt - BACKLOG_MS) continue;
+        if (message) this.publish('chat.message', message);
+        if (alert) this.publish('alert.event', alert);
       }
     }
     if (r.offlineAt) this.endChat();

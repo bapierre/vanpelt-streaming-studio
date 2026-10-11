@@ -401,3 +401,70 @@ describe('YouTubeConnector backoff stability', () => {
     expect(api.streamChat).toHaveBeenCalledTimes(4);
   });
 });
+
+describe('YouTubeConnector alerts', () => {
+  let alerts: unknown[];
+  let totals: unknown[];
+  beforeEach(() => {
+    alerts = [];
+    totals = [];
+    bus.subscribe(['alert.event'], (e) => alerts.push(e.payload));
+    bus.subscribe(['platform.totals'], (e) => totals.push(e.payload));
+  });
+
+  it('publishes Super Chats as tips alongside the chat line, once', async () => {
+    connector.start();
+    await settle();
+    const superChat = {
+      id: 'sc1',
+      snippet: {
+        type: 'superChatEvent',
+        publishedAt: '2026-10-01T12:00:02Z',
+        displayMessage: '$5.00 from Fan: "gg"',
+        superChatDetails: { amountMicros: '5000000', currency: 'USD', amountDisplayString: '$5.00', userComment: 'gg' },
+      },
+      authorDetails: { channelId: 'UCfan', displayName: 'Fan' },
+    };
+    streams[0]!.handlers.onResponse({ items: [superChat, superChat, msg('old', '2026-10-01T11:00:00Z', 'newSponsorEvent')] });
+    expect(ofType('chat.message')).toHaveLength(1);
+    expect(alerts).toEqual([
+      {
+        id: 'youtube:sc1',
+        kind: 'tip',
+        platform: 'youtube',
+        user: { id: 'UCfan', name: 'Fan' },
+        amount: 5,
+        currency: 'USD',
+        amountText: '$5.00',
+        message: 'gg',
+        at: Date.parse('2026-10-01T12:00:02Z'),
+      },
+    ]);
+  });
+
+  it('publishes the rounded subscriber count at most every 10 minutes', async () => {
+    api.channelStats = vi.fn(async () => ({ subscribers: 12300 }));
+    api.findActiveChat.mockResolvedValue(null);
+    connector.start();
+    await settle();
+    expect(totals).toEqual([{ platform: 'youtube', followers: 12300, approximate: true }]);
+    clock += 60_000;
+    timer.fire(60_000);
+    await settle();
+    expect(api.channelStats).toHaveBeenCalledTimes(1);
+    clock += 10 * 60_000;
+    timer.fire(60_000);
+    await settle();
+    expect(api.channelStats).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps going when the subscriber count cannot be read', async () => {
+    api.channelStats = vi.fn(async () => {
+      throw new Error('quota');
+    });
+    connector.start();
+    await settle();
+    expect(totals).toEqual([]);
+    expect(api.streamChat).toHaveBeenCalledTimes(1);
+  });
+});

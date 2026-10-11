@@ -78,3 +78,16 @@ describe('gRPC', () => {
     expect(mapGrpcError({ code: 14 }).kind).toBe('other');
   });
 });
+
+describe('channelStats', () => {
+  it('reads the subscriber count of the signed-in channel', async () => {
+    const fetchFn = fakeFetch(() => json(200, { items: [{ statistics: { subscriberCount: '12300', hiddenSubscriberCount: false } }] }));
+    expect(await createYouTubeApi(fetchFn).channelStats!('t')).toEqual({ subscribers: 12300 });
+    expect(Object.fromEntries(new URL(fetchFn.calls[0]!.url).searchParams)).toEqual({ part: 'statistics', mine: 'true' });
+  });
+
+  it('returns nothing when the channel hides its count', async () => {
+    const fetchFn = fakeFetch(() => json(200, { items: [{ statistics: { subscriberCount: '0', hiddenSubscriberCount: true } }] }));
+    expect(await createYouTubeApi(fetchFn).channelStats!('t')).toEqual({});
+  });
+});

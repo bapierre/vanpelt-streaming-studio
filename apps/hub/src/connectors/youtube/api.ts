@@ -30,6 +30,8 @@ export type ChatStream = { cancel(): void };
 export interface YouTubeApi {
   findActiveChat(token: string): Promise<{ liveChatId: string; title: string } | null>;
   myChannelTitle(token: string): Promise<string | undefined>;
+  /** YouTube rounds subscriber counts down to three significant figures; hidden counts come back undefined. */
+  channelStats?(token: string): Promise<{ subscribers?: number }>;
   pollChat(token: string, liveChatId: string, pageToken?: string): Promise<YtListResponse>;
   streamChat(token: string, liveChatId: string, pageToken: string | undefined, handlers: StreamHandlers): ChatStream;
 }
@@ -112,6 +114,15 @@ export function createYouTubeApi(fetchFn: typeof fetch = fetch): YouTubeApi {
         items?: Array<{ snippet?: { title?: string } }>;
       };
       return body.items?.[0]?.snippet?.title;
+    },
+
+    async channelStats(token) {
+      const body = (await get('/channels', { part: 'statistics', mine: 'true' }, token)) as {
+        items?: Array<{ statistics?: { subscriberCount?: string; hiddenSubscriberCount?: boolean } }>;
+      };
+      const stats = body.items?.[0]?.statistics;
+      const n = Number(stats?.subscriberCount);
+      return stats && !stats.hiddenSubscriberCount && Number.isInteger(n) && n >= 0 ? { subscribers: n } : {};
     },
 
     async pollChat(token, liveChatId, pageToken) {

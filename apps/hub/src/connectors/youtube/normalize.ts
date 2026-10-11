@@ -18,6 +18,12 @@ export type YtMessage = {
     displayMessage?: string;
     textMessageDetails?: { messageText?: string };
     userBannedDetails?: { bannedUserDetails?: { channelId?: string } };
+    /** REST sends micros as a string, gRPC (longs: Number) as a number. */
+    superChatDetails?: { amountMicros?: string | number; currency?: string; amountDisplayString?: string; userComment?: string };
+    superStickerDetails?: { amountMicros?: string | number; currency?: string; amountDisplayString?: string };
+    newSponsorDetails?: { memberLevelName?: string; isUpgrade?: boolean };
+    memberMilestoneChatDetails?: { memberLevelName?: string; memberMonth?: number; userComment?: string };
+    membershipGiftingDetails?: { giftMembershipsCount?: number; giftMembershipsLevelName?: string };
   };
   authorDetails?: YtAuthor;
 };
