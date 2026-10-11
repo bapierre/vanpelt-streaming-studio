@@ -22,6 +22,7 @@ import { micIdFor, type AudioConfig, type MicConfig } from './config';
 import {
   applyRouting,
   assignTracks,
+  chainFilterKey,
   configureRecording,
   dbFromObs,
   ensureChain,
@@ -34,6 +35,7 @@ import {
   MICS_SCENE,
   monitorFromObs,
   monitorToObs,
+  readFilterSettings,
   readInputAudio,
   setFilterEnabled,
   tracksFor,
@@ -125,6 +127,8 @@ export class AudioService {
     this.unsubscribe = null;
     if (this.check) this.timer.clear(this.check.handle);
     this.check = null;
+    if (this.saveHandle !== null) this.timer.clear(this.saveHandle);
+    this.saveHandle = null;
   }
 
   /** Resolves once all queued OBS work has finished. */
@@ -213,6 +217,18 @@ export class AudioService {
     return this.entries.find((e) => e.cfg.id === id);
   }
 
+  /** A target slider drag saves once it pauses for this long, not on every tick. */
+  static readonly SAVE_DELAY_MS = 1000;
+  private saveHandle: unknown = null;
+
+  private saveSoon() {
+    if (this.saveHandle !== null) this.timer.clear(this.saveHandle);
+    this.saveHandle = this.timer.set(() => {
+      this.saveHandle = null;
+      void this.saveConfig();
+    }, AudioService.SAVE_DELAY_MS);
+  }
+
   private async saveConfig() {
     try {
       await this.opts.save(this.opts.config);
@@ -243,7 +259,8 @@ export class AudioService {
       case 'audio.cmd.setTarget':
         this.opts.config.targetDb = (e.payload as EventPayload<'audio.cmd.setTarget'>).targetDb;
         this.publish();
-        return void this.saveConfig();
+        this.saveSoon();
+        return;
       case 'audio.cmd.add':
         return this.run('add mic', () => this.addMic(e.payload as MicAdd));
       case 'audio.cmd.remove':
@@ -305,13 +322,31 @@ export class AudioService {
     on<{ inputName: string; videoActive: boolean }>('InputActiveStateChanged', (d) =>
       update(d.inputName, (e) => (e.audio.live = d.videoActive)),
     );
-    for (const event of [
+    // Settings echoes carry their payload, so the state updates without a full chain readback
+    // (a slider drag otherwise costs a GetSourceFilterList plus six GetSourceFilter calls per tick).
+    on<{ sourceName: string; filterName?: string; filterSettings?: Record<string, unknown> }>(
       'SourceFilterSettingsChanged',
-      'SourceFilterEnableStateChanged',
-      'SourceFilterCreated',
-      'SourceFilterRemoved',
-      'SourceFilterNameChanged',
-    ]) {
+      (d) => {
+        const key = chainFilterKey(d.filterName);
+        const e = this.byInput(d.sourceName);
+        if (!key || !e || e.status !== 'ok') return;
+        if (d.filterSettings) {
+          e.filters = readFilterSettings(e.filters, key, d.filterSettings);
+          this.publish();
+        } else {
+          this.queueRefresh(e);
+        }
+      },
+    );
+    on<{ sourceName: string; filterName?: string; filterEnabled?: boolean }>('SourceFilterEnableStateChanged', (d) => {
+      const key = chainFilterKey(d.filterName);
+      const e = this.byInput(d.sourceName);
+      if (!key || !e || e.status !== 'ok') return;
+      if (d.filterEnabled === undefined) return this.queueRefresh(e);
+      e.filters = readFilterSettings(e.filters, key, {}, d.filterEnabled);
+      this.publish();
+    });
+    for (const event of ['SourceFilterCreated', 'SourceFilterRemoved', 'SourceFilterNameChanged']) {
       on<{ sourceName: string; filterName?: string }>(event, (d) => {
         // Headset sends live on the same inputs but are not part of the mic's chain.
         if (!isHeadsetFilter(d.filterName)) this.queueRefresh(this.byInput(d.sourceName));
@@ -334,7 +369,7 @@ export class AudioService {
       if (!e) return;
       e.cfg.input = d.inputName;
       this.publish();
-      void this.saveConfig();
+      this.saveSoon();
     });
     on<{ outputState: string }>('RecordStateChanged', (d) => this.onRecordState(d.outputState));
     on<{ inputs: Array<{ inputName: string; inputLevelsMul: unknown }> }>('InputVolumeMeters', (d) => this.onMeters(d.inputs));

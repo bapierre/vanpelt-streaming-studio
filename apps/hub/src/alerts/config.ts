@@ -60,10 +60,13 @@ export async function loadAlertsFile(path: string, log: (msg: string) => void = 
   return parsed.data;
 }
 
+/** Saves can overlap; each needs its own temp file or the renames collide. */
+let tmpCounter = 0;
+
 /** Atomic (temp file + rename) so a crash never leaves a half-written file. */
 export async function saveAlertsFile(path: string, file: AlertsFile): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.tmp`;
+  const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
   await writeFile(tmp, `${JSON.stringify(file, null, 2)}\n`);
   await rename(tmp, path);
 }

@@ -51,10 +51,13 @@ export async function loadHeadsetsConfig(path: string, log: (msg: string) => voi
   return parsed.data;
 }
 
+/** Saves can overlap (one per slider tick); each needs its own temp file or the renames collide. */
+let tmpCounter = 0;
+
 /** Writes are atomic (temp file + rename) so a crash never leaves a half-written config. */
 export async function saveHeadsetsConfig(path: string, cfg: HeadsetsConfig): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.tmp`;
+  const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
   await writeFile(tmp, `${JSON.stringify(cfg, null, 2)}\n`);
   await rename(tmp, path);
 }

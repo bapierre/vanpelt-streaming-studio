@@ -106,6 +106,8 @@ export class AlertService {
           this.handle(e);
         } catch (err) {
           this.log(`[alerts] failed to handle ${e.type}: ${describeError(err)}`);
+        } finally {
+          this.flushPublishes();
         }
       },
     );
@@ -170,7 +172,7 @@ export class AlertService {
     if (this.recent.length > MAX_RECENT) this.recent.length = MAX_RECENT;
     this.count(alert);
     this.enqueue({ alert, force: false });
-    this.publishRecent();
+    this.publishSoon('recent');
   }
 
   private remember(key: string) {
@@ -195,7 +197,7 @@ export class AlertService {
     if (alert.kind === 'giftsub') since.subs += alert.count ?? 1;
     this.sinceTotals.set(alert.platform, since);
     if (changed) this.saveSoon();
-    this.publishGoals();
+    this.publishSoon('goals');
   }
 
   private onTotals(t: PlatformTotals) {
@@ -210,7 +212,7 @@ export class AlertService {
       subs: t.subs ?? prev.subs,
       approximate: t.approximate,
     });
-    this.publishGoals();
+    this.publishSoon('goals');
   }
 
   private onStreamState(state: StreamState) {
@@ -223,7 +225,7 @@ export class AlertService {
       if (ended === undefined || this.now() - ended > RESTART_GRACE_MS) {
         for (const g of this.file.goals) if (g.goal.scope === 'stream') g.count = 0;
         this.saveSoon();
-        this.publishGoals();
+        this.publishSoon('goals');
       }
     }
     if (state === 'stopped' && (prev === 'live' || prev === 'stopping')) {
@@ -245,7 +247,7 @@ export class AlertService {
     this.recent.unshift(alert);
     if (this.recent.length > MAX_RECENT) this.recent.length = MAX_RECENT;
     this.enqueue({ alert, force: true });
-    this.publishRecent();
+    this.publishSoon('recent');
   }
 
   /** `force`: tests and replays play even when their kind is off or below the minimum. */
@@ -259,12 +261,12 @@ export class AlertService {
 
   private playNext() {
     if (this.current || this.gap !== null || this.file.config.paused) {
-      this.publishRecent();
+      this.publishSoon('recent');
       return;
     }
     const next = this.queue.shift();
     if (!next) {
-      this.publishRecent();
+      this.publishSoon('recent');
       return;
     }
     const cfg = this.file.config.kinds[next.alert.kind];
@@ -277,7 +279,7 @@ export class AlertService {
       durationMs: cfg.durationMs,
     });
     this.current = { id, handle: this.timer.set(() => this.finish(id), cfg.durationMs) };
-    this.publishRecent();
+    this.publishSoon('recent');
   }
 
   private finish(id: string) {
@@ -325,7 +327,7 @@ export class AlertService {
       this.file.goals.push({ goal, count: 0 });
     }
     this.saveSoon();
-    this.publishGoals();
+    this.publishSoon('goals');
   }
 
   private removeGoal(id: string) {
@@ -333,7 +335,7 @@ export class AlertService {
     this.file.goals = this.file.goals.filter((g) => g.goal.id !== id);
     if (this.file.goals.length === before) return;
     this.saveSoon();
-    this.publishGoals();
+    this.publishSoon('goals');
   }
 
   private resetGoal(id: string) {
@@ -341,7 +343,7 @@ export class AlertService {
     if (!stored) return;
     stored.count = 0;
     this.saveSoon();
-    this.publishGoals();
+    this.publishSoon('goals');
   }
 
   goalState(stored: StoredGoal): GoalState {
@@ -389,6 +391,27 @@ export class AlertService {
 
   private publishConfig() {
     this.publish('alert.config', this.file.config);
+  }
+
+  /** State changed several times inside one event (recent + goals + queue), so publishes flush once per event. */
+  private pendingPublishes: Set<'recent' | 'goals'> | null = null;
+
+  private publishSoon(kind: 'recent' | 'goals') {
+    if (this.pendingPublishes) {
+      this.pendingPublishes.add(kind);
+      return;
+    }
+    this.pendingPublishes = new Set([kind]);
+    // Timer paths (gap → playNext) never pass through the bus handler, so they flush here.
+    queueMicrotask(() => this.flushPublishes());
+  }
+
+  private flushPublishes() {
+    const pending = this.pendingPublishes;
+    this.pendingPublishes = null;
+    if (!pending) return;
+    if (pending.has('recent')) this.publishRecent();
+    if (pending.has('goals')) this.publishGoals();
   }
 
   private publishRecent() {

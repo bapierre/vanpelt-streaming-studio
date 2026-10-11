@@ -108,6 +108,24 @@ export const FILTERS: { [K in MicFilterKey]: FilterDef<K> } = {
 export const initialFilters = (): MicFilters =>
   Object.fromEntries(MIC_FILTER_ORDER.map((k) => [k, { ...FILTERS[k].initial }])) as MicFilters;
 
+/** The chain filter with this OBS name, or null for filters the chain does not own. */
+export const chainFilterKey = (name: string | undefined): MicFilterKey | null =>
+  MIC_FILTER_ORDER.find((k) => FILTERS[k].name === name) ?? null;
+
+/**
+ * Applies a filter change echoed by OBS (SourceFilterSettingsChanged / ...EnableStateChanged)
+ * straight into local state, so an echo does not need a full readback of the chain.
+ */
+export function readFilterSettings<K extends MicFilterKey>(
+  filters: MicFilters,
+  key: K,
+  settings: Record<string, unknown>,
+  enabled?: boolean,
+): MicFilters {
+  const def: FilterDef<K> = FILTERS[key];
+  return { ...filters, [key]: def.fromObs({ ...def.toObs(filters[key]), ...settings }, enabled ?? filters[key].enabled) };
+}
+
 /** Values outside the OBS ranges (e.g. a hand-edited filter) are clamped so the state stays valid. */
 function clampToSchema<K extends MicFilterKey>(key: K, v: MicFilters[K]): MicFilters[K] {
   const shape = MicFilterSchemas[key].shape as Record<string, { minValue?: number | null; maxValue?: number | null }>;

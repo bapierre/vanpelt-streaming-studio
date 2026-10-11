@@ -18,6 +18,7 @@ import { micIdFor } from '../audio/config';
 import { isNotFound } from '../cameras/obs-side';
 import type { Bus } from '../bus/bus';
 import { describeError } from '../util/errors';
+import { realTimer, type Timer } from '../util/timer';
 import type { HeadsetConfig, HeadsetsConfig } from './config';
 import {
   AUDIO_MONITOR_KIND,
@@ -35,6 +36,7 @@ export type HeadsetServiceOptions = {
   config: HeadsetsConfig;
   save: (cfg: HeadsetsConfig) => Promise<void>;
   listOutputs: () => Promise<OutputList>;
+  timer?: Timer;
   log?: (msg: string) => void;
 };
 
@@ -42,6 +44,8 @@ export type HeadsetServiceOptions = {
 const PROBE_INPUT = 'streamhub device probe';
 /** Volume changes smaller than this (in %) are not worth a request. */
 const VOLUME_EPSILON = 0.01;
+/** A slider drag saves once it pauses for this long, not on every tick. */
+export const SAVE_DELAY_MS = 1000;
 
 type Mic = { id: string; name: string; input: string; muted: boolean; ok: boolean };
 /** What the hub last wrote to (or read from) one headset filter on one input. */
@@ -67,6 +71,9 @@ export class HeadsetService {
   private readonly applied = new Map<string, Applied>();
   private readonly reorderQueued = new Set<string>();
   private outputs: OutputList = { outputs: [] };
+  /** system_profiler costs up to a few seconds, so it runs only once outputs are wanted. */
+  private outputsScanned = false;
+  private saveHandle: unknown = null;
   private queue: Promise<void> = Promise.resolve();
   private applyQueued = false;
   private published = '';
@@ -74,8 +81,11 @@ export class HeadsetService {
   private listening = false;
   private readonly log: (msg: string) => void;
 
+  private readonly timer: Timer;
+
   constructor(private readonly opts: HeadsetServiceOptions) {
     this.log = opts.log ?? console.warn;
+    this.timer = opts.timer ?? realTimer;
   }
 
   start() {
@@ -84,12 +94,14 @@ export class HeadsetService {
     for (const e of this.opts.bus.retainedFor(topics)) this.onEvent(e);
     this.unsubscribe = this.opts.bus.subscribe(topics, (e) => this.onEvent(e));
     this.publish();
-    this.run('list outputs', () => this.refreshOutputs());
+    if (this.headsets.length > 0) this.scanOutputs();
   }
 
   stop() {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    if (this.saveHandle !== null) this.timer.clear(this.saveHandle);
+    this.saveHandle = null;
   }
 
   /** Resolves once all queued OBS work has finished. */
@@ -205,6 +217,15 @@ export class HeadsetService {
     }
   }
 
+  /** Saves trail the last change by SAVE_DELAY_MS so a drag writes once, not on every tick. */
+  private saveSoon() {
+    if (this.saveHandle !== null) this.timer.clear(this.saveHandle);
+    this.saveHandle = this.timer.set(() => {
+      this.saveHandle = null;
+      void this.saveConfig();
+    }, SAVE_DELAY_MS);
+  }
+
   /** Sources that appeared since a headset was set up join it switched on, at full level. */
   private fillSends(): boolean {
     let changed = false;
@@ -220,9 +241,13 @@ export class HeadsetService {
 
   /** Call after anything that changes the sources or the config: fills sends, saves, publishes, applies. */
   private changed(saveNeeded: boolean) {
-    if (this.fillSends() || saveNeeded) void this.saveConfig();
+    if (this.fillSends() || saveNeeded) this.saveSoon();
     this.publish();
     this.scheduleApply();
+  }
+
+  private scanOutputs() {
+    this.run('list outputs', () => this.refreshOutputs());
   }
 
   // ---- bus ----
@@ -258,7 +283,7 @@ export class HeadsetService {
       case 'headsets.cmd.setSend':
         return this.setSend(e.payload as HeadsetSendPatch);
       case 'headsets.cmd.listOutputs':
-        return this.run('list outputs', () => this.refreshOutputs());
+        return this.scanOutputs();
     }
   }
 
@@ -268,6 +293,8 @@ export class HeadsetService {
     // Everyone hears every source by default, their own mic included (sidetone).
     const sends = Object.fromEntries(this.sources().map((s) => [s.key, { on: true, db: 0 }]));
     this.headsets.push({ id, name: p.name, device: p.device, owner: p.owner, masterDb: 0, muted: false, sends });
+    // The add form wants the output list even when no headset existed at startup.
+    if (!this.outputsScanned) this.scanOutputs();
     this.changed(true);
   }
 
@@ -349,6 +376,7 @@ export class HeadsetService {
 
   private async refreshOutputs() {
     this.outputs = await this.opts.listOutputs();
+    this.outputsScanned = true;
     this.publish();
   }
 

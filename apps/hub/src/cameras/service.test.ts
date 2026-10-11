@@ -170,6 +170,19 @@ describe('CameraService — OBS-only camera', () => {
     expect(t.logs.some((l) => l.includes('obs.gamma on sony failed'))).toBe(true);
     expect(t.states.get('sony')?.status).toBe('ready');
   });
+
+  it('coalesces a slider drag into one OBS write per key', async () => {
+    const t = setup([sony]);
+    await t.obsUp(['Sony'], 'Sony');
+    t.fake.calls.length = 0;
+    for (const value of [0.1, 0.2, 0.3]) {
+      t.bus.publish({ type: 'camera.cmd.set', payload: { id: 'sony', key: 'obs.brightness', value }, source: 'dashboard' });
+    }
+    await t.service.idle();
+    const writes = t.fake.calls.filter(([type]) => type === 'SetSourceFilterSettings');
+    expect(writes).toHaveLength(1);
+    expect(control(t.states.get('sony'), 'obs.brightness')).toMatchObject({ value: 0.3 });
+  });
 });
 
 describe('CameraService — driver camera', () => {

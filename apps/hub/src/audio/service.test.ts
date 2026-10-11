@@ -117,11 +117,24 @@ describe('AudioService', () => {
     obs.inputs.get('Guest mic')!.active = true;
     obs.emit('InputActiveStateChanged', { inputName: 'Guest mic', videoActive: true });
     obs.inputs.get('Host mic')!.filters.find((f) => f.name === 'streamhub gain')!.settings.db = 5;
-    obs.emit('SourceFilterSettingsChanged', { sourceName: 'Host mic', filterName: 'streamhub gain' });
+    obs.emit('SourceFilterSettingsChanged', { sourceName: 'Host mic', filterName: 'streamhub gain', filterSettings: { db: 5 } });
     await svc.idle();
     expect(mic('host').volumeDb).toBe(-12);
     expect(mic('guest').live).toBe(true);
     expect(mic('host').filters.gain.db).toBe(5);
+  });
+
+  it('applies filter echoes without reading the chain back from OBS', async () => {
+    await connect();
+    obs.calls = [];
+    obs.emit('SourceFilterSettingsChanged', { sourceName: 'Host mic', filterName: 'streamhub gate', filterSettings: { open_threshold: -20 } });
+    obs.emit('SourceFilterEnableStateChanged', { sourceName: 'Host mic', filterName: 'streamhub limiter', filterEnabled: false });
+    await svc.idle();
+    expect(mic('host').filters.gate.openDb).toBe(-20);
+    expect(mic('host').filters.limiter.enabled).toBe(false);
+    // No GetSourceFilterList, no GetSourceFilter: the echo carried everything.
+    expect(obs.callsOf('GetSourceFilter')).toEqual([]);
+    expect(obs.callsOf('GetSourceFilterList')).toEqual([]);
   });
 
   it('does not re-read the chain when a headset send changes', async () => {
@@ -170,7 +183,11 @@ describe('AudioService', () => {
     obs.emit('InputNameChanged', { oldInputName: 'Host mic', inputName: 'Host lav' });
     await svc.idle();
     expect(state().targetDb).toBe(-16);
+    // Both changes share one debounced save.
+    expect(saved).toEqual([]);
+    timer.fire(AudioService.SAVE_DELAY_MS);
     expect(saved.at(-1)!.mics[0]!.input).toBe('Host lav');
+    expect(saved.at(-1)!.targetDb).toBe(-16);
   });
 });
 

@@ -6,7 +6,7 @@ import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { FakeTimer } from '../testing/timer';
 import type { CameraConfig } from './config';
-import { discoverDrivers, DriverHost, type ChildLike, type DriverModule, type SpawnFn } from './drivers';
+import { discoverDrivers, DriverHost, STABLE_DRIVER_MS, type ChildLike, type DriverModule, type SpawnFn } from './drivers';
 
 class FakeChild extends EventEmitter implements ChildLike {
   stdin = new PassThrough();
@@ -42,6 +42,7 @@ function setup(cameras: CameraConfig[] = [cam('gopro', 'camera-gopro'), cam('son
   const exits: Array<[string, string]> = [];
   const logs: string[] = [];
   const timer = new FakeTimer();
+  const clock = { now: 0 };
   const host = new DriverHost({
     drivers: new Map([[gopro.id, gopro]]),
     cameras,
@@ -51,9 +52,10 @@ function setup(cameras: CameraConfig[] = [cam('gopro', 'camera-gopro'), cam('son
     tsLoaderArgs: ['--import', 'tsx'],
     timer,
     rand: () => 0,
+    now: () => clock.now,
     log: (m) => logs.push(m),
   });
-  return { host, spawned, exits, logs, timer };
+  return { host, spawned, exits, logs, timer, clock };
 }
 
 describe('DriverHost', () => {
@@ -93,6 +95,23 @@ describe('DriverHost', () => {
     expect(t.spawned[1]!.env.STREAMHUB_DRIVER_TOKEN).not.toBe(first.env.STREAMHUB_DRIVER_TOKEN);
     t.spawned[1]!.child.emit('exit', 1, null);
     expect(t.timer.has(1000)).toBe(true); // backoff grows until the driver connects
+  });
+
+  it('keeps backing off when an authorized driver crash-loops, resets after a stable run', () => {
+    const t = setup();
+    t.host.start();
+    // The driver connects and dies right away, over and over: auth alone must not reset the backoff.
+    t.host.authorize('camera-gopro', t.spawned[0]!.env.STREAMHUB_DRIVER_TOKEN!);
+    t.spawned[0]!.child.emit('exit', 1, null);
+    t.timer.fire(500);
+    t.host.authorize('camera-gopro', t.spawned[1]!.env.STREAMHUB_DRIVER_TOKEN!);
+    t.spawned[1]!.child.emit('exit', 1, null);
+    expect(t.timer.has(1000)).toBe(true);
+    // A run that stayed up earns the reset: the next restart is quick again.
+    t.timer.fire(1000);
+    t.clock.now = STABLE_DRIVER_MS;
+    t.spawned[2]!.child.emit('exit', 1, null);
+    expect(t.timer.has(500)).toBe(true);
   });
 
   it('prefixes driver output in the hub log', async () => {

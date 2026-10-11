@@ -90,6 +90,7 @@ export type DriverHostOptions = {
   tsLoaderArgs?: string[] | null;
   timer?: Timer;
   rand?: () => number;
+  now?: () => number;
   log?: (msg: string) => void;
 };
 
@@ -99,6 +100,7 @@ type Running = {
   child: ChildLike | null;
   token: string | null;
   attempt: number;
+  launchedAt: number;
   retry: unknown;
 };
 
@@ -116,6 +118,9 @@ function defaultTsLoaderArgs(): string[] | null {
 /** Only what a driver needs: drivers are third-party code and must not see the hub's .env secrets. */
 const PASSTHROUGH_ENV = ['PATH', 'HOME', 'USERPROFILE', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP', 'LANG'];
 
+/** A driver that stayed up this long counts as healthy; its next crash restarts from the first backoff step. */
+export const STABLE_DRIVER_MS = 30_000;
+
 /** Runs each camera driver as its own process and restarts it with backoff when it exits. */
 export class DriverHost {
   private readonly running = new Map<string, Running>();
@@ -123,6 +128,7 @@ export class DriverHost {
   private readonly spawn: SpawnFn;
   private readonly timer: Timer;
   private readonly rand: () => number;
+  private readonly now: () => number;
   private readonly log: (msg: string) => void;
   private readonly tsLoaderArgs: string[] | null;
 
@@ -130,6 +136,7 @@ export class DriverHost {
     this.spawn = opts.spawn ?? defaultSpawn;
     this.timer = opts.timer ?? realTimer;
     this.rand = opts.rand ?? Math.random;
+    this.now = opts.now ?? Date.now;
     this.log = opts.log ?? console.warn;
     this.tsLoaderArgs = opts.tsLoaderArgs === undefined ? defaultTsLoaderArgs() : opts.tsLoaderArgs;
   }
@@ -142,7 +149,15 @@ export class DriverHost {
       byDriver.set(cam.driver, [...(byDriver.get(cam.driver) ?? []), cam]);
     }
     for (const [id, cameras] of byDriver) {
-      const r: Running = { module: this.opts.drivers.get(id)!, cameras, child: null, token: null, attempt: 0, retry: null };
+      const r: Running = {
+        module: this.opts.drivers.get(id)!,
+        cameras,
+        child: null,
+        token: null,
+        attempt: 0,
+        launchedAt: 0,
+        retry: null,
+      };
       this.running.set(id, r);
       this.launch(r);
     }
@@ -155,7 +170,6 @@ export class DriverHost {
     const a = Buffer.from(token);
     const b = Buffer.from(r.token);
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-    r.attempt = 0;
     return r.cameras.map((c) => c.id);
   }
 
@@ -195,6 +209,7 @@ export class DriverHost {
       return;
     }
     r.token = randomBytes(24).toString('hex');
+    r.launchedAt = this.now();
     const env: Record<string, string> = {};
     for (const k of PASSTHROUGH_ENV) if (process.env[k]) env[k] = process.env[k]!;
     Object.assign(env, {
@@ -236,6 +251,9 @@ export class DriverHost {
     if (this.stopped) return;
     this.log(`[drivers] ${r.module.id}: ${detail}`);
     this.opts.onExit(r.module.id, `${detail}; restarting`);
+    // A crash-looping driver (dies seconds after every launch) keeps backing off; only a run
+    // that stayed up long enough to be useful earns a reset.
+    if (this.now() - r.launchedAt >= STABLE_DRIVER_MS) r.attempt = 0;
     const delay = backoffDelay(r.attempt++, this.rand);
     r.retry = this.timer.set(() => {
       r.retry = null;

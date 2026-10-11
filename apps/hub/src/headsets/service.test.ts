@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { AudioState, Envelope, HeadsetsState, MicState } from '@streamhub/shared';
 import { Bus } from '../bus/bus';
 import { FakeObsAudio, makeInput } from '../testing/fake-obs-audio';
+import { FakeTimer } from '../testing/timer';
 import type { HeadsetsConfig } from './config';
 import { dbToMonitorVolume } from './monitor';
-import { HeadsetService } from './service';
+import { SAVE_DELAY_MS, HeadsetService } from './service';
 
 let bus: Bus;
 let obs: FakeObsAudio;
@@ -12,6 +13,7 @@ let config: HeadsetsConfig;
 let saved: HeadsetsConfig[];
 let logs: string[];
 let svc: HeadsetService;
+let timer: FakeTimer;
 
 const mic = (id: string, input: string, over: Partial<MicState> = {}): MicState => ({
   id,
@@ -49,16 +51,21 @@ beforeEach(() => {
   logs = [];
   config = { headsets: [] };
   publishAudio([mic('host', 'Host mic'), mic('guest', 'Guest mic')]);
+  timer = new FakeTimer();
   svc = new HeadsetService({
     bus,
     obs,
     config,
     save: async (c) => void saved.push(structuredClone(c)),
     listOutputs: async () => ({ outputs: ['MacBook Pro Speakers', 'USB Audio'] }),
+    timer,
     log: (m) => logs.push(m),
   });
   svc.start();
 });
+
+/** Saves are debounced, so they land only once the quiet period has passed. */
+const flushSaves = () => timer.fire(SAVE_DELAY_MS);
 
 function publishAudio(mics: MicState[]) {
   bus.publish({ type: 'audio.state', payload: audioState(mics), source: 'audio' });
@@ -125,6 +132,7 @@ describe('HeadsetService', () => {
     });
     expect(hp('Guest mic')).toBeDefined();
     expect(hp('Music')).toBeDefined();
+    flushSaves();
     expect(saved.at(-1)!.headsets[0]!.id).toBe('cohost');
   });
 

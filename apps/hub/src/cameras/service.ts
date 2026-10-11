@@ -27,6 +27,8 @@ type Entry = {
   obsDetail?: string;
   queue: Promise<void>;
   published?: string;
+  /** OBS-side controls waiting for the queued write; a slider drag merges into one entry per key. */
+  pendingObs?: Map<string, ControlValue>;
 };
 
 export class CameraService {
@@ -133,15 +135,32 @@ export class CameraService {
     if (!entry) return this.log(`[cameras] set: unknown camera ${id}`);
     if (key === 'obs.createScene') return this.enqueue(entry, () => this.createScene(entry));
     if (isObsSideKey(key)) {
-      return this.enqueue(entry, async () => {
-        if (!entry.side) throw new Error(entry.obsDetail ?? 'OBS source unavailable');
-        try {
-          entry.side = await applyObsControl(this.opts.obs, entry.cfg, entry.side, key, value);
-        } catch (err) {
-          await this.refresh(entry); // resync with whatever OBS holds now
-          throw err;
-        }
-      }, `${key} on ${id}`);
+      // A slider drag outruns OBS writes; only the latest value per key is worth sending.
+      const pending = (entry.pendingObs ??= new Map());
+      const first = pending.size === 0;
+      pending.set(key, value);
+      if (!first) return;
+      this.enqueue(
+        entry,
+        async () => {
+          for (;;) {
+            const next = pending.entries().next().value as [string, ControlValue] | undefined;
+            if (!next) break;
+            const [k, v] = next;
+            pending.delete(k);
+            if (!entry.side) throw new Error(entry.obsDetail ?? 'OBS source unavailable');
+            try {
+              entry.side = await applyObsControl(this.opts.obs, entry.cfg, entry.side, k, v);
+            } catch (err) {
+              pending.clear(); // superseded by whatever OBS holds now
+              await this.refresh(entry);
+              throw err;
+            }
+          }
+        },
+        `${key} on ${id}`,
+      );
+      return;
     }
     if (key.startsWith('obs.')) return this.log(`[cameras] unknown control ${key}`);
     if (!entry.cfg.driver || entry.driverDown) {

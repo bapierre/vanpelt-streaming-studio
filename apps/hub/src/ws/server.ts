@@ -86,8 +86,59 @@ export function isOriginAllowed(origin: string | undefined, allowed: string[]): 
   return origin === undefined || allowed.includes(origin);
 }
 
+/** High-rate, replayable events a slow client may skip; everything else queues. */
+const DROPPABLE_WHEN_BEHIND = new Set(['audio.levels']);
+/** A client this far behind (e.g. a frozen browser source) stops getting droppable events. */
+const SKIP_BUFFER_BYTES = 256 * 1024;
+/** A client this far behind is disconnected; it resyncs from retained state when it comes back. */
+const KILL_BUFFER_BYTES = 8 * 1024 * 1024;
+/** How often dead connections are probed (browser sources never send close frames when OBS kills them). */
+const HEARTBEAT_MS = 30_000;
+
+type Client = {
+  ws: WebSocket;
+  role: Role;
+  topics: Set<string>;
+  alive: boolean;
+};
+
 export function attachWebSocket(server: Server, opts: WsOptions): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+  const clients = new Set<Client>();
+
+  // One subscription for every client: each event is serialized once, then filtered per client.
+  const unsubscribeBus = opts.bus.subscribe(['*'], (event) => {
+    let text: string | undefined;
+    for (const client of clients) {
+      if (!client.role.canReceive(event) || !topicMatches(client.topics, event.type)) continue;
+      const { ws } = client;
+      if (ws.readyState !== ws.OPEN) continue;
+      if (ws.bufferedAmount > KILL_BUFFER_BYTES) {
+        ws.terminate();
+        continue;
+      }
+      if (ws.bufferedAmount > SKIP_BUFFER_BYTES && DROPPABLE_WHEN_BEHIND.has(event.type)) continue;
+      text ??= JSON.stringify(event);
+      ws.send(text);
+    }
+  });
+
+  const heartbeat = setInterval(() => {
+    for (const client of clients) {
+      if (!client.alive) {
+        client.ws.terminate();
+        continue;
+      }
+      client.alive = false;
+      client.ws.ping();
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
+  server.on('close', () => {
+    unsubscribeBus();
+    clearInterval(heartbeat);
+  });
+
   server.on('upgrade', (req, socket, head) => {
     // Compare the raw path: parsing with URL throws on inputs like `//`, and this runs before the Origin check.
     const [pathname, query = ''] = (req.url ?? '/').split('?');
@@ -121,21 +172,22 @@ export function attachWebSocket(server: Server, opts: WsOptions): WebSocketServe
       }
       role = moduleRole(manifest);
     }
-    wss.handleUpgrade(req, socket, head, (ws) => handleClient(ws, opts.bus, role));
+    wss.handleUpgrade(req, socket, head, (ws) => handleClient(clients, ws, opts.bus, role));
   });
   return wss;
 }
 
-function handleClient(ws: WebSocket, bus: Bus, role: Role) {
-  const topics = new Set<string>();
+function handleClient(clients: Set<Client>, ws: WebSocket, bus: Bus, role: Role) {
+  const client: Client = { ws, role, topics: new Set(), alive: true };
+  clients.add(client);
+  ws.on('pong', () => {
+    client.alive = true;
+  });
+  const topics = client.topics;
   const send = (msg: ServerMessage) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
   };
   const fail = (code: ErrorCode, message: string) => send({ op: 'error', code, message });
-
-  const unsubscribe = bus.subscribe(['*'], (event) => {
-    if (role.canReceive(event) && topicMatches(topics, event.type)) send(event);
-  });
 
   ws.on('message', (data, isBinary) => {
     if (isBinary) return fail('bad_op', 'binary frames are not supported');
@@ -181,6 +233,6 @@ function handleClient(ws: WebSocket, bus: Bus, role: Role) {
     }
   });
 
-  ws.on('close', unsubscribe);
+  ws.on('close', () => clients.delete(client));
   ws.on('error', () => ws.terminate());
 }
