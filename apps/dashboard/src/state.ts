@@ -30,7 +30,8 @@ export type DashboardState = {
 export type Action =
   | { kind: 'hub'; connected: boolean }
   | { kind: 'event'; event: Envelope }
-  | { kind: 'backfill'; events: Envelope[] };
+  | { kind: 'backfill'; events: Envelope[] }
+  | { kind: 'chatBatch'; events: Envelope[] };
 
 export const initialState: DashboardState = {
   hubConnected: false,
@@ -61,6 +62,18 @@ export function reduce(state: DashboardState, action: Action): DashboardState {
       .filter((m) => !known.has(m.id));
     const chat = [...older, ...state.chat].sort((a, b) => a.sentAt - b.sentAt).slice(-CHAT_LIMIT);
     return { ...state, chat };
+  }
+  if (action.kind === 'chatBatch') {
+    const known = new Set(state.chat.map((m) => m.id));
+    const fresh: ChatMessage[] = [];
+    for (const e of action.events) {
+      const m = e.payload as ChatMessage;
+      if (known.has(m.id)) continue;
+      known.add(m.id);
+      fresh.push(m);
+    }
+    if (fresh.length === 0) return state;
+    return { ...state, chat: [...state.chat, ...fresh].slice(-CHAT_LIMIT) };
   }
   const { type, payload } = action.event;
   switch (type) {

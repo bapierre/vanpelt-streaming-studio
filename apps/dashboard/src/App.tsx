@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { HubClient } from '@streamhub/overlay-sdk';
 import type { ChatMessage } from '@streamhub/shared';
 import { AlertsPanel, type AlertActions } from './components/AlertsPanel';
-import { Mixer, WithLevels, type AudioActions } from './components/AudioPanel';
+import { Mixer, type AudioActions } from './components/AudioPanel';
 import { CamerasPanel, CameraSwitcher } from './components/CamerasPanel';
 import { ChatPanel } from './components/ChatPanel';
 import { ChatTab } from './components/ChatTab';
@@ -22,6 +22,7 @@ import { SourcesPanel } from './components/SourcesPanel';
 import { StatusBar } from './components/StatusBar';
 import { StreamControls } from './components/StreamControls';
 import { panelId, tabId, TabBar, useTabs } from './components/Tabs';
+import { createLevelsStore } from './levels';
 import { preflightChecks, summarize, type Fix } from './preflight';
 import { usePrefs } from './prefs';
 import { useAlerts } from './useAlerts';
@@ -39,41 +40,58 @@ export function App({ client }: { client: HubClient }) {
   const recording = useRecording(client);
   const headsets = useHeadsets(client);
   const alerts = useAlerts(client);
-  const takeCamera = (id: string) => client.publish('camera.cmd.take', { id });
+  const takeCamera = useCallback((id: string) => client.publish('camera.cmd.take', { id }), [client]);
   const audio = useAudio(client);
-  const audioActions: AudioActions = {
-    onSet: (patch) => client.publish('audio.cmd.set', patch),
-    onSoundcheck: (id, action) => client.publish('audio.cmd.soundcheck', { id, action }),
-    onTarget: (targetDb) => client.publish('audio.cmd.setTarget', { targetDb }),
-    onAdd: (add) => client.publish('audio.cmd.add', add),
-    onRemove: (id) => client.publish('audio.cmd.remove', { id }),
-    onNest: () => client.publish('audio.cmd.nest', {}),
-    onListDevices: () => client.publish('audio.cmd.listDevices'),
-  };
-  const headsetActions: HeadsetActions = {
-    onAdd: (add) => client.publish('headsets.cmd.add', add),
-    onUpdate: (patch) => client.publish('headsets.cmd.update', patch),
-    onRemove: (id) => client.publish('headsets.cmd.remove', { id }),
-    onSetSend: (patch) => client.publish('headsets.cmd.setSend', patch),
-    onListOutputs: () => client.publish('headsets.cmd.listOutputs'),
-  };
-  const alertActions: AlertActions = {
-    onTest: (kind) => client.publish('alert.cmd.test', { kind }),
-    onReplay: (id) => client.publish('alert.cmd.replay', { id }),
-    onSkip: () => client.publish('alert.cmd.skip', {}),
-    onPause: (paused) => client.publish('alert.cmd.pause', { paused }),
-    onSetKind: (patch) => client.publish('alert.cmd.setKind', patch),
-  };
-  const goalActions: GoalActions = {
-    onSave: (goal) => client.publish('goal.cmd.save', goal),
-    onRemove: (id) => client.publish('goal.cmd.remove', { id }),
-    onReset: (id) => client.publish('goal.cmd.reset', { id }),
-  };
+  // Meter levels live outside React state so their 15 Hz tick only re-renders meters.
+  const levels = useMemo(() => createLevelsStore(client), [client]);
+  const audioActions = useMemo<AudioActions>(
+    () => ({
+      onSet: (patch) => client.publish('audio.cmd.set', patch),
+      onSoundcheck: (id, action) => client.publish('audio.cmd.soundcheck', { id, action }),
+      onTarget: (targetDb) => client.publish('audio.cmd.setTarget', { targetDb }),
+      onAdd: (add) => client.publish('audio.cmd.add', add),
+      onRemove: (id) => client.publish('audio.cmd.remove', { id }),
+      onNest: () => client.publish('audio.cmd.nest', {}),
+      onListDevices: () => client.publish('audio.cmd.listDevices'),
+    }),
+    [client],
+  );
+  const headsetActions = useMemo<HeadsetActions>(
+    () => ({
+      onAdd: (add) => client.publish('headsets.cmd.add', add),
+      onUpdate: (patch) => client.publish('headsets.cmd.update', patch),
+      onRemove: (id) => client.publish('headsets.cmd.remove', { id }),
+      onSetSend: (patch) => client.publish('headsets.cmd.setSend', patch),
+      onListOutputs: () => client.publish('headsets.cmd.listOutputs'),
+    }),
+    [client],
+  );
+  const alertActions = useMemo<AlertActions>(
+    () => ({
+      onTest: (kind) => client.publish('alert.cmd.test', { kind }),
+      onReplay: (id) => client.publish('alert.cmd.replay', { id }),
+      onSkip: () => client.publish('alert.cmd.skip', {}),
+      onPause: (paused) => client.publish('alert.cmd.pause', { paused }),
+      onSetKind: (patch) => client.publish('alert.cmd.setKind', patch),
+    }),
+    [client],
+  );
+  const goalActions = useMemo<GoalActions>(
+    () => ({
+      onSave: (goal) => client.publish('goal.cmd.save', goal),
+      onRemove: (id) => client.publish('goal.cmd.remove', { id }),
+      onReset: (id) => client.publish('goal.cmd.reset', { id }),
+    }),
+    [client],
+  );
   const obsReady = state.hubConnected && state.obs.connected;
   const live = state.stream.state !== 'stopped';
   const platformsNeedAttention = Object.values(state.connections).some((c) => c?.state === 'error');
   const platformLive = Object.values(state.live).filter((l) => l && state.connections[l.platform]?.state === 'connected');
-  const checks = preflightChecks({ state, audio: audio.state, headsets, recording, cameras, alerts: alerts.config });
+  const checks = useMemo(
+    () => preflightChecks({ state, audio: audio.state, headsets, recording, cameras, alerts: alerts.config }),
+    [state, audio.state, headsets, recording, cameras, alerts.config],
+  );
   // A pre-flight Fix can open a given Settings section; any other way into Settings starts fresh.
   const [settingsAt, setSettingsAt] = useState<string>();
   useEffect(() => {
@@ -83,8 +101,8 @@ export function App({ client }: { client: HubClient }) {
     setSettingsAt(fix.section);
     setTab(fix.tab);
   };
-  const onFeature = (message: ChatMessage) => client.publish('show.feature.set', { message });
-  const onClearFeature = () => client.publish('show.feature.clear');
+  const onFeature = useCallback((message: ChatMessage) => client.publish('show.feature.set', { message }), [client]);
+  const onClearFeature = useCallback(() => client.publish('show.feature.clear'), [client]);
 
   const panel = () => {
     switch (tab) {
@@ -108,9 +126,7 @@ export function App({ client }: { client: HubClient }) {
             </aside>
             <section className="live-mixer" aria-label="Mixer">
               {audio.state && audio.state.mics.length > 0 ? (
-                <WithLevels client={client}>
-                  {(levels) => <Mixer mics={audio.state?.mics ?? []} levels={levels} disabled={!obsReady} onSet={audioActions.onSet} />}
-                </WithLevels>
+                <Mixer mics={audio.state.mics} levels={levels} disabled={!obsReady} onSet={audioActions.onSet} />
               ) : (
                 <p className="side-empty small">No mics yet. Add them in the Sound tab.</p>
               )}
@@ -129,20 +145,16 @@ export function App({ client }: { client: HubClient }) {
         );
       case 'sound':
         return (
-          <WithLevels client={client}>
-            {(levels) => (
-              <SoundTab
-                state={audio.state}
-                devices={audio.devices}
-                levels={levels}
-                headsets={headsets}
-                disabled={!obsReady}
-                hubConnected={state.hubConnected}
-                actions={audioActions}
-                headsetActions={headsetActions}
-              />
-            )}
-          </WithLevels>
+          <SoundTab
+            state={audio.state}
+            devices={audio.devices}
+            levels={levels}
+            headsets={headsets}
+            disabled={!obsReady}
+            hubConnected={state.hubConnected}
+            actions={audioActions}
+            headsetActions={headsetActions}
+          />
         );
       case 'chat':
         return (

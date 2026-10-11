@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { memo, useEffect, useId, useState } from 'react';
 import {
   AUDIO_MONITOR_URL,
   HEADSET_MAX_DB,
@@ -6,7 +6,6 @@ import {
   type HeadsetAdd,
   type HeadsetPatch,
   type HeadsetSendPatch,
-  type HeadsetSource,
   type HeadsetsState,
   type HeadsetState,
   type MicState,
@@ -63,7 +62,7 @@ function DeviceInput({
   );
 }
 
-function HeadsetHead({
+const HeadsetHead = memo(function HeadsetHead({
   h,
   mics,
   outputs,
@@ -137,51 +136,60 @@ function HeadsetHead({
       {h.detail && <p className={h.status === 'ok' ? 'small muted' : 'small conn-error'}>{h.detail}</p>}
     </th>
   );
-}
+});
 
-function SendCell({
-  h,
-  source,
+/** One send, memoized on primitives: a headsets.state tick re-renders only the cells that changed. */
+export const SendCell = memo(function SendCell({
+  headsetId,
+  headsetName,
+  sourceKey,
+  sourceName,
+  on,
+  db,
+  self,
   disabled,
   onSetSend,
 }: {
-  h: HeadsetState;
-  source: HeadsetSource;
+  headsetId: string;
+  headsetName: string;
+  sourceKey: string;
+  sourceName: string;
+  on: boolean;
+  db: number;
+  self: boolean;
   disabled: boolean;
   onSetSend: HeadsetActions['onSetSend'];
 }) {
-  const send = h.sends[source.key] ?? DEFAULT_SEND;
-  const self = h.owner !== null && source.key === `mic:${h.owner}`;
   return (
-    <td className={send.on ? 'hp-cell' : 'hp-cell off'}>
+    <td className={on ? 'hp-cell' : 'hp-cell off'}>
       <div className="control">
         <button
           className="switch"
           role="switch"
-          aria-checked={send.on}
-          aria-label={`${source.name} in ${h.name}`}
+          aria-checked={on}
+          aria-label={`${sourceName} in ${headsetName}`}
           disabled={disabled}
-          onClick={() => onSetSend({ id: h.id, source: source.key, on: !send.on })}
+          onClick={() => onSetSend({ id: headsetId, source: sourceKey, on: !on })}
         />
         <ThrottledRange
-          label={`${source.name} level in ${h.name}`}
-          value={send.db}
+          label={`${sourceName} level in ${headsetName}`}
+          value={db}
           min={HEADSET_MIN_DB}
           max={HEADSET_MAX_DB}
           step={0.5}
-          disabled={disabled || !send.on}
+          disabled={disabled || !on}
           format={formatDb}
-          onChange={(v) => onSetSend({ id: h.id, source: source.key, db: v })}
+          onChange={(v) => onSetSend({ id: headsetId, source: sourceKey, db: v })}
         />
         {self && (
-          <span className="badge" title={`${h.name} hears their own voice`}>
+          <span className="badge" title={`${headsetName} hears their own voice`}>
             self
           </span>
         )}
       </div>
     </td>
   );
-}
+});
 
 function AddHeadset({
   mics,
@@ -299,9 +307,23 @@ export function HeadsetMatrix({
                     {source.name}
                     {source.kind === 'obs' && <span className="small muted"> · OBS</span>}
                   </th>
-                  {state.headsets.map((h) => (
-                    <SendCell key={h.id} h={h} source={source} disabled={disabled} onSetSend={actions.onSetSend} />
-                  ))}
+                  {state.headsets.map((h) => {
+                    const send = h.sends[source.key] ?? DEFAULT_SEND;
+                    return (
+                      <SendCell
+                        key={h.id}
+                        headsetId={h.id}
+                        headsetName={h.name}
+                        sourceKey={source.key}
+                        sourceName={source.name}
+                        on={send.on}
+                        db={send.db}
+                        self={h.owner !== null && source.key === `mic:${h.owner}`}
+                        disabled={disabled}
+                        onSetSend={actions.onSetSend}
+                      />
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

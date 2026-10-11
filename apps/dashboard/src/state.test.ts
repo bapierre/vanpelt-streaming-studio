@@ -105,6 +105,17 @@ describe('chat state', () => {
     expect(s.chat.map((m) => m.id)).toEqual(['twitch:1', 'twitch:2']);
   });
 
+  it('applies a chat batch in one action, deduped and capped', () => {
+    const events = Array.from({ length: 305 }, (_, i) => chatEv(`twitch:${i}`));
+    const s = reduce(initialState, { kind: 'chatBatch', events });
+    expect(s.chat).toHaveLength(300);
+    expect(s.chat[0]!.id).toBe('twitch:5');
+    const again = reduce(s, { kind: 'chatBatch', events: [chatEv('twitch:304'), chatEv('twitch:304'), chatEv('twitch:305')] });
+    expect(again.chat).toHaveLength(300);
+    expect(again.chat.at(-1)!.id).toBe('twitch:305');
+    expect(reduce(again, { kind: 'chatBatch', events: [chatEv('twitch:305')] })).toBe(again);
+  });
+
   it('tracks the featured message and connection states', () => {
     const s = apply([
       ev('show.feature.set', { message: chatMessage({ id: 'twitch:9' }) }),

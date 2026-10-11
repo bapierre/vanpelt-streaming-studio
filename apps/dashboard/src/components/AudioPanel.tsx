@@ -1,18 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import type { HubClient } from '@streamhub/overlay-sdk';
+import { useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import type { AudioDevices, AudioState, MicChannel, MicFilterKey, MicFilters, MicPatch, MicState, Monitor } from '@streamhub/shared';
-import {
-  FADER_MAX_DB,
-  FADER_MIN_DB,
-  formatDb,
-  meterPercent,
-  meterZone,
-  micWarning,
-  SPLIT_HINT,
-  trackLabel,
-  type Levels,
-} from '../audio';
-import { useAudioLevels } from '../useAudio';
+import { FADER_MAX_DB, FADER_MIN_DB, formatDb, meterPercent, meterZone, micWarning, SPLIT_HINT, trackLabel } from '../audio';
+import type { Level, LevelsStore } from '../levels';
 import { ThrottledRange } from './ThrottledRange';
 
 export type MicAddRequest = {
@@ -31,21 +20,21 @@ export type AudioActions = {
   onListDevices: () => void;
 };
 
-/** Subscribes to meter levels in its own component so the rest of the dashboard does not re-render with them. */
-export function WithLevels({ client, children }: { client: HubClient; children: (levels: Levels) => ReactNode }) {
-  return <>{children(useAudioLevels(client))}</>;
-}
-
-export function Meter({ id, levels }: { id: string; levels: Levels }) {
-  const l = levels[id];
-  const rms = l?.rmsDb ?? -100;
-  const peak = l?.peakDb ?? -100;
+export function Meter({ level }: { level?: Level }) {
+  const rms = level?.rmsDb ?? -100;
+  const peak = level?.peakDb ?? -100;
   return (
     <div className="meter" role="meter" aria-label="Level" aria-valuemin={-60} aria-valuemax={0} aria-valuenow={Math.round(Math.max(-60, rms))}>
-      <div className={`meter-fill ${meterZone(peak)}`} style={{ width: `${meterPercent(rms)}%` }} />
-      <div className="meter-peak" style={{ left: `${meterPercent(peak)}%` }} />
+      <div className={`meter-fill ${meterZone(peak)}`} style={{ '--level': meterPercent(rms) / 100 } as CSSProperties} />
+      <div className="meter-peak" style={{ '--peak': `${meterPercent(peak)}%` } as CSSProperties} />
     </div>
   );
+}
+
+/** The only component that re-renders on level ticks: it subscribes to one mic in the levels store. */
+export function LiveMeter({ store, id }: { store: LevelsStore; id: string }) {
+  const subscribe = useCallback((notify: () => void) => store.subscribe(id, notify), [store, id]);
+  return <Meter level={useSyncExternalStore(subscribe, () => store.get(id))} />;
 }
 
 export function Fader({ mic, disabled, onSet }: { mic: MicState; disabled: boolean; onSet: AudioActions['onSet'] }) {
@@ -85,7 +74,7 @@ export function Mixer({
   onSet,
 }: {
   mics: MicState[];
-  levels: Levels;
+  levels: LevelsStore;
   disabled: boolean;
   onSet: AudioActions['onSet'];
 }) {
@@ -104,7 +93,7 @@ export function Mixer({
               {warning && <span className="cam-warn">!</span>}
               <MuteButton mic={mic} disabled={off} onSet={onSet} />
             </div>
-            <Meter id={mic.id} levels={levels} />
+            <LiveMeter store={levels} id={mic.id} />
             <div className="control">
               <Fader mic={mic} disabled={off} onSet={onSet} />
             </div>
@@ -265,7 +254,7 @@ export function SoundcheckView({ mic, disabled, onSoundcheck }: { mic: MicState;
 const MONITOR_LABEL: Record<Monitor, string> = { off: 'Off', monitor: 'Headphones only', both: 'Headphones and stream' };
 
 /** Everything about one mic: name, level, monitoring, sync, sound check and the voice filters. */
-export function MicCard({ mic, levels, disabled, actions }: { mic: MicState; levels: Levels; disabled: boolean; actions: AudioActions }) {
+export function MicCard({ mic, levels, disabled, actions }: { mic: MicState; levels: LevelsStore; disabled: boolean; actions: AudioActions }) {
   const [name, setName] = useState(mic.name);
   useEffect(() => setName(mic.name), [mic.name]);
   const off = disabled || mic.status !== 'ok';
@@ -300,7 +289,7 @@ export function MicCard({ mic, levels, disabled, actions }: { mic: MicState; lev
       </p>
       {warning && <p className="conn-error small">{warning}</p>}
       {mic.channel !== 'both' && <p className="small muted">{SPLIT_HINT}</p>}
-      <Meter id={mic.id} levels={levels} />
+      <LiveMeter store={levels} id={mic.id} />
       <div className="control">
         <label htmlFor={`${mic.id}-fader`}>Volume</label>
         <ThrottledRange

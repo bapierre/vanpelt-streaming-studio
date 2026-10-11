@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { AudioDevices, AudioState, HeadsetsState, MicState } from '@streamhub/shared';
-import { micWarning, trackLabel, type Levels } from '../audio';
-import { AddMic, Fader, MicCard, MuteButton, Meter, recordingSummary, type AudioActions } from './AudioPanel';
+import { micWarning, trackLabel } from '../audio';
+import type { LevelsStore } from '../levels';
+import { AddMic, Fader, LiveMeter, MicCard, MuteButton, recordingSummary, type AudioActions } from './AudioPanel';
 import { HeadsetMatrix, type HeadsetActions } from './HeadsetMatrix';
 
 function Strip({
@@ -13,7 +14,7 @@ function Strip({
   onOpen,
 }: {
   mic: MicState;
-  levels: Levels;
+  levels: LevelsStore;
   selected: boolean;
   disabled: boolean;
   actions: AudioActions;
@@ -33,7 +34,7 @@ function Strip({
         {mic.live && mic.status === 'ok' && <span className="program-badge">On air</span>}
         {warning && <span className="cam-warn">!</span>}
       </div>
-      <Meter id={mic.id} levels={levels} />
+      <LiveMeter store={levels} id={mic.id} />
       <div className="control">
         <Fader mic={mic} disabled={off} onSet={actions.onSet} />
       </div>
@@ -64,7 +65,7 @@ export function SoundTab({
 }: {
   state: AudioState | null;
   devices: AudioDevices | null;
-  levels: Levels;
+  levels: LevelsStore;
   headsets: HeadsetsState | null;
   /** OBS is not reachable: nothing can change in OBS. */
   disabled: boolean;

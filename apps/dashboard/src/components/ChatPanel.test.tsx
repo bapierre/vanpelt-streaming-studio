@@ -101,6 +101,15 @@ describe('ChatPanel pausing', () => {
     expect(screen.getByRole('button', { name: /Jump to latest/ }).textContent).toContain('1 new');
   });
 
+  it('clamps the new-message count when the anchor falls out of the window', () => {
+    const { container, rerender } = render(<ChatPanel messages={ids(0, 300)} {...props} />);
+    scrollTo(container.querySelector('ol')!, 0);
+    // The anchor (twitch:299) is gone from the window: count from just below the
+    // top instead of calling all 20 messages new.
+    rerender(<ChatPanel messages={ids(300, 320)} {...props} />);
+    expect(screen.getByRole('button', { name: /Jump to latest/ }).textContent).toContain('19 new');
+  });
+
   it('jump to latest re-pins and removes the button', () => {
     const { container, rerender } = render(<ChatPanel messages={ids(0, 3)} {...props} />);
     scrollTo(container.querySelector('ol')!, 0);

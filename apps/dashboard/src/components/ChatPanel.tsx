@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, Platform } from '@streamhub/shared';
 import type { ChatSize } from '../prefs';
 import { CHAT_PLATFORMS, PLATFORMS, platformColor } from '../platforms';
@@ -16,8 +16,11 @@ type Props = {
   query?: string;
 };
 
-export function matchesQuery(m: ChatMessage, query: string): boolean {
-  const q = query.trim().toLowerCase();
+/** Normalize once per keystroke, not once per message per render. */
+export const normalizeQuery = (query: string) => query.trim().toLowerCase();
+
+/** `q` must already be normalized (see normalizeQuery). */
+export function matchesQuery(m: ChatMessage, q: string): boolean {
   return !q || m.text.toLowerCase().includes(q) || m.author.name.toLowerCase().includes(q);
 }
 
@@ -35,12 +38,58 @@ function Fragment({ f }: { f: ChatMessage['fragments'][number] }) {
       return <>{f.url}</>;
     case 'emote': {
       const src = safeHttpsUrl(f.url);
-      return src ? <img className="emote" src={src} alt={f.name} title={f.name} /> : <>{f.name}</>;
+      return src ? <img className="emote" src={src} alt={f.name} title={f.name} decoding="async" loading="lazy" /> : <>{f.name}</>;
     }
   }
 }
 
-export function ChatPanel({
+/** One row, memoized: a burst of new messages must not re-render the 299 already on screen. */
+const ChatRow = memo(function ChatRow({
+  m,
+  featured,
+  compact,
+  onFeature,
+  onClearFeature,
+}: {
+  m: ChatMessage;
+  featured: boolean;
+  compact: boolean;
+  onFeature: (message: ChatMessage) => void;
+  onClearFeature: () => void;
+}) {
+  return (
+    <li className={featured ? 'chat-row featured' : 'chat-row'}>
+      <span className="tag" style={platformColor(m.platform)}>
+        {PLATFORMS[m.platform].label}
+      </span>
+      <span className="author" style={m.author.color ? { color: m.author.color } : undefined}>
+        {m.author.name}
+      </span>
+      {!compact &&
+        m.author.roles.map((r) => (
+          <span key={r} className="role">
+            {r}
+          </span>
+        ))}
+      <span className="text">
+        {m.fragments.map((f, i) => (
+          <Fragment key={i} f={f} />
+        ))}
+      </span>
+      {featured ? (
+        <button className="feature" onClick={onClearFeature}>
+          Unfeature
+        </button>
+      ) : (
+        <button className="feature" onClick={() => onFeature(m)}>
+          Feature
+        </button>
+      )}
+    </li>
+  );
+});
+
+export const ChatPanel = memo(function ChatPanel({
   messages,
   featuredId,
   onFeature,
@@ -55,11 +104,15 @@ export function ChatPanel({
   const [paused, setPaused] = useState<{ anchor: string | undefined } | null>(null);
   const list = useRef<HTMLOListElement>(null);
 
-  const visible = messages.filter(
-    (m) => (compact || !hidden.has(m.platform)) && matchesQuery(m, query),
+  const q = normalizeQuery(query);
+  const visible = useMemo(
+    () => messages.filter((m) => (compact || !hidden.has(m.platform)) && matchesQuery(m, q)),
+    [messages, hidden, compact, q],
   );
   const pinned = paused === null;
-  const anchorIndex = paused?.anchor === undefined ? -1 : visible.findIndex((m) => m.id === paused.anchor);
+  // A missing anchor fell out of the trimmed window (or was deleted): count from
+  // just below the first visible message instead of calling all of them new.
+  const anchorIndex = paused?.anchor === undefined ? -1 : Math.max(0, visible.findIndex((m) => m.id === paused.anchor));
   const unseen = paused ? visible.length - (anchorIndex + 1) : 0;
 
   useLayoutEffect(() => {
@@ -108,34 +161,7 @@ export function ChatPanel({
       )}
       <ol className="chat-list" ref={list} onScroll={(e) => onScroll(e.currentTarget)}>
         {visible.map((m) => (
-          <li key={m.id} className={m.id === featuredId ? 'chat-row featured' : 'chat-row'}>
-            <span className="tag" style={platformColor(m.platform)}>
-              {PLATFORMS[m.platform].label}
-            </span>
-            <span className="author" style={m.author.color ? { color: m.author.color } : undefined}>
-              {m.author.name}
-            </span>
-            {!compact &&
-              m.author.roles.map((r) => (
-                <span key={r} className="role">
-                  {r}
-                </span>
-              ))}
-            <span className="text">
-              {m.fragments.map((f, i) => (
-                <Fragment key={i} f={f} />
-              ))}
-            </span>
-            {m.id === featuredId ? (
-              <button className="feature" onClick={onClearFeature}>
-                Unfeature
-              </button>
-            ) : (
-              <button className="feature" onClick={() => onFeature(m)}>
-                Feature
-              </button>
-            )}
-          </li>
+          <ChatRow key={m.id} m={m} featured={m.id === featuredId} compact={compact} onFeature={onFeature} onClearFeature={onClearFeature} />
         ))}
       </ol>
       {!pinned && (
@@ -151,4 +177,4 @@ export function ChatPanel({
       )}
     </section>
   );
-}
+});

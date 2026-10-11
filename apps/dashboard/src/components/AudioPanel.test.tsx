@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AudioDevices, AudioState, MicState } from '@streamhub/shared';
-import { meterPercent, meterZone, micWarning, reduceAudio } from '../audio';
+import type { HubClient } from '@streamhub/overlay-sdk';
+import type { AudioDevices, AudioState, Envelope, MicState } from '@streamhub/shared';
+import { meterPercent, meterZone, micWarning, reduceAudio, type Levels } from '../audio';
+import { createLevelsStore, type LevelsStore } from '../levels';
 import { Mixer, type AudioActions } from './AudioPanel';
 import type { HeadsetActions } from './HeadsetMatrix';
 import { SoundTab } from './SoundTab';
@@ -12,6 +14,29 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
+
+/** A levels store that never ticks; enough for everything but the meter tests. */
+const staticLevels = (levels: Levels = {}): LevelsStore => ({ get: (id) => levels[id], subscribe: () => () => {} });
+
+/** A levels store wired to a fake hub, so tests can emit audio.levels. */
+function liveLevels() {
+  let handler: ((e: Envelope) => void) | undefined;
+  const client: HubClient = {
+    on: (_topic, h) => {
+      handler = h;
+      return () => {};
+    },
+    publish: () => {},
+    history: async () => [],
+    onStatus: () => () => {},
+    onError: () => () => {},
+    close: () => {},
+  };
+  const store = createLevelsStore(client);
+  const emit = (levels: Levels) =>
+    act(() => handler?.({ id: '1', type: 'audio.levels', ts: 0, source: 'hub', payload: { levels } }));
+  return { store, emit };
+}
 
 const filters: MicState['filters'] = {
   gain: { enabled: true, db: 0 },
@@ -70,7 +95,7 @@ function renderPanel(s: AudioState | null = state(), disabled = false) {
     <SoundTab
       state={s}
       devices={devices}
-      levels={{ host: { rmsDb: -20, peakDb: -4 } }}
+      levels={staticLevels({ host: { rmsDb: -20, peakDb: -4 } })}
       headsets={null}
       disabled={disabled}
       hubConnected={!disabled}
@@ -90,7 +115,7 @@ describe('Mixer', () => {
   it('mutes and fades the right mic, throttling the fader', () => {
     vi.useFakeTimers();
     const onSet = vi.fn();
-    render(<Mixer mics={[host, guest]} levels={{}} disabled={false} onSet={onSet} />);
+    render(<Mixer mics={[host, guest]} levels={staticLevels()} disabled={false} onSet={onSet} />);
     fireEvent.click(screen.getByRole('button', { name: 'Mute Guest' }));
     const fader = screen.getByLabelText('Host volume');
     fireEvent.change(fader, { target: { value: '-3' } });
@@ -102,7 +127,7 @@ describe('Mixer', () => {
   it('pulls the fader to the bottom as silence and disables missing mics', () => {
     vi.useFakeTimers();
     const onSet = vi.fn();
-    render(<Mixer mics={[host, lost]} levels={{}} disabled={false} onSet={onSet} />);
+    render(<Mixer mics={[host, lost]} levels={staticLevels()} disabled={false} onSet={onSet} />);
     expect((screen.getByLabelText('Lost volume') as HTMLInputElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Host volume'), { target: { value: '-60' } });
     act(() => vi.advanceTimersByTime(RANGE_SEND_MS));
@@ -110,10 +135,24 @@ describe('Mixer', () => {
   });
 
   it('shows a muted mic as pressed and renders nothing without mics', () => {
-    const { container, rerender } = render(<Mixer mics={[{ ...host, muted: true }]} levels={{}} disabled={false} onSet={() => {}} />);
+    const { container, rerender } = render(<Mixer mics={[{ ...host, muted: true }]} levels={staticLevels()} disabled={false} onSet={() => {}} />);
     expect(screen.getByRole('button', { name: 'Unmute Host' }).getAttribute('aria-pressed')).toBe('true');
-    rerender(<Mixer mics={[]} levels={{}} disabled={false} onSet={() => {}} />);
+    rerender(<Mixer mics={[]} levels={staticLevels()} disabled={false} onSet={() => {}} />);
     expect(container.innerHTML).toBe('');
+  });
+
+  it('meters follow the levels store, per mic', () => {
+    const { store, emit } = liveLevels();
+    render(<Mixer mics={[host, guest]} levels={store} disabled={false} onSet={() => {}} />);
+    const meters = screen.getAllByRole('meter');
+    expect(meters[0]!.getAttribute('aria-valuenow')).toBe('-60');
+    emit({ host: { rmsDb: -20, peakDb: -4 } });
+    expect(meters[0]!.getAttribute('aria-valuenow')).toBe('-20');
+    // Only the mic that moved updates; the other stays at silence.
+    expect(meters[1]!.getAttribute('aria-valuenow')).toBe('-60');
+    emit({ host: { rmsDb: -30, peakDb: -10 }, guest: { rmsDb: -12, peakDb: -6 } });
+    expect(meters[0]!.getAttribute('aria-valuenow')).toBe('-30');
+    expect(meters[1]!.getAttribute('aria-valuenow')).toBe('-12');
   });
 });
 

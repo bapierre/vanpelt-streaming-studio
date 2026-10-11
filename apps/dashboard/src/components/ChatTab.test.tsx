@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chatMessage } from '@streamhub/shared/testing';
-import { ChatPanel, matchesQuery } from './ChatPanel';
+import { ChatPanel, matchesQuery, normalizeQuery } from './ChatPanel';
 import { ChatTab } from './ChatTab';
 
 afterEach(cleanup);
@@ -64,9 +64,9 @@ describe('compact ChatPanel', () => {
 });
 
 describe('matchesQuery', () => {
-  it('treats a blank query as everything', () => {
-    expect(matchesQuery(messages[0]!, '   ')).toBe(true);
-    expect(matchesQuery(messages[0]!, ' FIRST ')).toBe(true);
-    expect(matchesQuery(messages[0]!, 'bo')).toBe(false);
+  it('treats a blank query as everything, after one normalization', () => {
+    expect(matchesQuery(messages[0]!, normalizeQuery('   '))).toBe(true);
+    expect(matchesQuery(messages[0]!, normalizeQuery(' FIRST '))).toBe(true);
+    expect(matchesQuery(messages[0]!, normalizeQuery('bo'))).toBe(false);
   });
 });
