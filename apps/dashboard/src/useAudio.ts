@@ -16,7 +16,7 @@ export function useAudio(client: HubClient) {
   return view;
 }
 
-/** Meter levels change about 15 times per second; keep them out of App state so only meters re-render. */
+/** Meter levels change up to 15 times per second; keep them out of App state so only meters re-render. */
 export function useAudioLevels(client: HubClient): Levels {
   const [levels, setLevels] = useState<Levels>({});
   useEffect(() => client.on('audio.levels', (e) => setLevels((e.payload as AudioLevels).levels)), [client]);

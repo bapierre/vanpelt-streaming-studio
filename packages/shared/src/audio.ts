@@ -119,7 +119,7 @@ export const AudioDevicesSchema = z.object({
 });
 export type AudioDevices = z.infer<typeof AudioDevicesSchema>;
 
-/** Live meter levels per mic id, dBFS (−100 is silence). Sent about 15 times per second, never retained. */
+/** Live meter levels per mic id, dBFS (−100 is silence). Sent up to 15 times per second, never retained. */
 export const AudioLevelsSchema = z.object({
   levels: z.record(MicIdSchema, z.object({ peakDb: z.number(), rmsDb: z.number() })),
 });

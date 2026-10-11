@@ -131,7 +131,7 @@ Video still flows camera → OBS; the hub only switches and tunes.
 Mics are OBS audio inputs; OBS mixes, filters and records them, and the hub drives OBS.
 - Mics are listed in `.streamhub/audio.json` (id, name, OBS input, side). Each gets track 1 (the stream mix) plus one isolated track, 2–6 in list order, so at most five mics are isolated; later mics are mix-only. A stereo device carrying two people (interface, dual wireless receiver) becomes two inputs panned left and right.
 - On every OBS connect the hub keeps a "streamhub …" filter chain on each mic (gain, noise suppression, gate, EQ, compressor, limiter; after any filters the user added), sets each mic's tracks and panning, and writes the record-track mask and track names into the OBS profile. OBS reads those when a recording starts, so changes during a recording wait (`tracksPending`). Starting and stopping recordings belongs to the recording service.
-- `audio.state` (retained) carries every mic's fader, mute, monitoring, sync offset, filters and sound-check result, followed live from OBS events. `audio.levels` (about 15/s, not retained) comes from OBS's high-volume `InputVolumeMeters` subscription.
+- `audio.state` (retained) carries every mic's fader, mute, monitoring, sync offset, filters and sound-check result, followed live from OBS events. `audio.levels` (up to 15/s, not retained) comes from OBS's high-volume `InputVolumeMeters` subscription.
 - **Sound check:** fader to 0 dB, dynamics off, measure the median speech level for a few seconds, set the gain filter to reach the target (±20 dB per check), turn dynamics back on.
 - Simulated in tests (`apps/hub/src/testing/fake-obs-audio.ts`); never run against a real OBS in tests. Guide: `docs/audio/mics.md`.
 

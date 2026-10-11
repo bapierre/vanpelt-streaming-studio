@@ -174,7 +174,7 @@ type AudioState = {
 | type | payload |
 |---|---|
 | `audio.state` | `AudioState` (retained) |
-| `audio.levels` | `{ levels: { [micId]: { peakDb, rmsDb } } }` about 15 per second while OBS is connected; never retained |
+| `audio.levels` | `{ levels: { [micId]: { peakDb, rmsDb } } }` up to 15 per second while OBS is connected; never retained |
 | `audio.devices` | `{ devices: { id, name }[], inputs: string[], detail? }` capture devices, and OBS audio inputs that are not mics yet (retained) |
 | `audio.cmd.set` | `{ id, name?, volumeDb?, muted?, monitor?, syncOffsetMs?, filters?: partial MicFilters }` |
 | `audio.cmd.add` | `{ name, channel?, from: { kind: 'device', device } \| { kind: 'input', input } }` create an OBS input for a device, or adopt an existing one |
