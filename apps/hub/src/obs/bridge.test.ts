@@ -28,6 +28,7 @@ class FakeObs extends EventEmitter implements ObsClient {
     },
   };
   failing = new Set<string>();
+  hanging = new Set<string>();
   connects: Array<[string, string | undefined]> = [];
   disconnects = 0;
 
@@ -45,6 +46,7 @@ class FakeObs extends EventEmitter implements ObsClient {
   }
   async call(type: string, data?: object) {
     this.calls.push([type, data]);
+    if (this.hanging.has(type)) return new Promise(() => {});
     if (this.failing.has(type)) throw new Error(`${type} failed`);
     return this.responses[type] ?? {};
   }
@@ -240,6 +242,29 @@ describe('ObsBridge', () => {
     await flush();
     await expect(bridge.call('GetInputList')).rejects.toThrow('OBS is not connected');
     expect(obs.calls.map(([t]) => t)).not.toContain('GetInputList');
+  });
+
+  it('rejects an in-flight call when OBS drops the connection', async () => {
+    obs.hanging.add('GetVersion');
+    bridge.start();
+    await flush();
+    const dropped = expect(bridge.call('GetVersion')).rejects.toThrow('OBS disconnected');
+    obs.emit('ConnectionClosed', new Error('lost'));
+    await dropped;
+  });
+
+  it('rejects a call OBS never answers, and clears the timeout once answered', async () => {
+    await bridge.stop();
+    bridge = new ObsBridge({ bus, client: obs, url: 'ws://x', password: '', timer, callTimeoutMs: 5000 });
+    bridge.start();
+    await flush();
+    await bridge.call('GetVersion');
+    expect(timer.queue).toHaveLength(0);
+
+    obs.hanging.add('GetVersion');
+    const unanswered = expect(bridge.call('GetVersion')).rejects.toThrow('OBS did not answer GetVersion within 5000 ms');
+    timer.runNext();
+    await unanswered;
   });
 
   it('survives OBS rejecting a command', async () => {

@@ -20,10 +20,17 @@ export type ObsBridgeOptions = {
   password: string;
   /** obs-websocket event subscription bitmask. OBS's default leaves out high-volume events such as meters. */
   eventSubscriptions?: number;
+  /** Reject an unanswered OBS request after this long; default 10 s. */
+  callTimeoutMs?: number;
   timer?: Timer;
   rand?: () => number;
   now?: () => number;
 };
+
+/** Reject an OBS request with no answer after this long; obs-websocket-js would wait forever. */
+const CALL_TIMEOUT_MS = 10_000;
+/** OBS sits on localhost, so retrying is cheap and a returning OBS should be noticed quickly. */
+const RECONNECT_MAX_MS = 10_000;
 
 type ObsScene = { sceneName: string; sceneIndex: number };
 type ObsSceneItem = { sourceName: string; sceneItemEnabled: boolean; sceneItemIndex: number };
@@ -56,6 +63,8 @@ export class ObsBridge {
   private url: string;
   private password: string;
   private unsubscribeBus: (() => void) | null = null;
+  /** Rejecters of in-flight `call`s, run when the connection drops. */
+  private dropListeners = new Set<() => void>();
   private readonly timer: Timer;
   private readonly rand: () => number;
   private readonly now: () => number;
@@ -95,13 +104,31 @@ export class ObsBridge {
     this.unsubscribeBus?.();
     if (this.retry !== null) this.timer.clear(this.retry);
     this.retry = null;
+    this.failInflight();
     await this.opts.client.disconnect().catch(() => {});
   }
 
-  /** For hub services that need replies from OBS; throws while disconnected. */
+  /**
+   * For hub services that need replies from OBS; throws while disconnected. obs-websocket-js never
+   * settles a request whose connection drops, which would stall a service's work queue for good, so
+   * the call also rejects when the connection drops or when OBS does not answer in time.
+   */
   async call(requestType: string, requestData?: object): Promise<unknown> {
     if (!this.connected) throw new Error('OBS is not connected');
-    return this.opts.client.call(requestType, requestData);
+    const timeoutMs = this.opts.callTimeoutMs ?? CALL_TIMEOUT_MS;
+    let rejectDropped!: (err: Error) => void;
+    const dropped = new Promise<never>((_, reject) => {
+      rejectDropped = reject;
+    });
+    const onDrop = () => rejectDropped(new Error('OBS disconnected'));
+    this.dropListeners.add(onDrop);
+    const timeout = this.timer.set(() => rejectDropped(new Error(`OBS did not answer ${requestType} within ${timeoutMs} ms`)), timeoutMs);
+    try {
+      return await Promise.race([this.opts.client.call(requestType, requestData), dropped]);
+    } finally {
+      this.timer.clear(timeout);
+      this.dropListeners.delete(onDrop);
+    }
   }
 
   /** Listen to an obs-websocket event directly, for hub services that need more than the bus carries. */
@@ -136,6 +163,7 @@ export class ObsBridge {
     const wasConnected = this.connected;
     // Cleared before disconnecting so onClosed does not schedule a second reconnect.
     this.connected = false;
+    this.failInflight();
     if (wasConnected) this.emit('obs.connection', { connected: false, detail: 'Reconnecting' });
     await this.opts.client.disconnect().catch(() => {});
     await this.connect();
@@ -168,13 +196,21 @@ export class ObsBridge {
   private onClosed(err: unknown) {
     if (!this.connected) return; // connect() failures are handled in connect()
     this.connected = false;
+    this.failInflight();
     this.emit('obs.connection', { connected: false, detail: describeError(err) });
     this.scheduleReconnect();
   }
 
+  /** Reject every in-flight `call`; obs-websocket-js would leave them pending forever. */
+  private failInflight() {
+    const listeners = [...this.dropListeners];
+    this.dropListeners.clear();
+    for (const listener of listeners) listener();
+  }
+
   private scheduleReconnect() {
     if (this.stopped || this.retry !== null) return;
-    const delay = backoffDelay(this.attempt++, this.rand);
+    const delay = backoffDelay(this.attempt++, this.rand, 1000, RECONNECT_MAX_MS);
     this.retry = this.timer.set(() => {
       this.retry = null;
       void this.connect();
