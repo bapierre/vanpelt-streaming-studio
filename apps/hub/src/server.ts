@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import fastifyStatic from '@fastify/static';
 import type { Bus } from './bus/bus';
 import type { ModuleHost } from './modules/host';
-import { attachWebSocket, type AuthorizeDriver } from './ws/server';
+import { attachWebSocket, isLoopbackHost, type AuthorizeDriver } from './ws/server';
 
 export type ServerOptions = {
   bus: Bus;
@@ -15,6 +15,10 @@ export type ServerOptions = {
   xCallback?: (query: Record<string, string | undefined>) => Promise<string>;
   authorizeDriver?: AuthorizeDriver;
   modules?: ModuleHost;
+  /** Base URL module pages are served from; /m/<id> here redirects there. Required when modules is set. */
+  modulesUrl?: string;
+  /** Non-browser WS clients must present this per-run token for the dashboard role. */
+  dashboardToken?: string;
 };
 
 export function allowedOrigins(port: number, dev: boolean): string[] {
@@ -23,8 +27,61 @@ export function allowedOrigins(port: number, dev: boolean): string[] {
   return origins;
 }
 
+/**
+ * Module pages run third-party-built code that renders chat text, so they get a CSP that blocks
+ * inline scripts; the dashboard CSP additionally locks images to keep page weight predictable.
+ * `unsafe-inline` in style-src covers React style attributes, which are property assignments and
+ * cannot smuggle script.
+ */
+const DASHBOARD_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' https: data:",
+  "connect-src 'self' ws:",
+  "font-src 'self' data:",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+].join('; ');
+const MODULE_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src https: data:",
+  "media-src https: data:",
+  "connect-src 'self' ws: https:",
+  "font-src 'self' data:",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+].join('; ');
+
+function addSecurityHooks(app: FastifyInstance, csp: string): void {
+  app.addHook('onRequest', async (req, reply) => {
+    if (!isLoopbackHost(req.headers.host)) {
+      return reply.code(403).type('text/plain; charset=utf-8').send('Forbidden');
+    }
+  });
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'no-referrer');
+    if (String(reply.getHeader('content-type') ?? '').startsWith('text/html')) {
+      reply.header('Content-Security-Policy', csp);
+    }
+  });
+}
+
+function closeWebSockets(app: FastifyInstance, wss: ReturnType<typeof attachWebSocket>): void {
+  // Upgraded sockets keep the HTTP server open, so close them before Fastify waits on it.
+  app.addHook('preClose', async () => {
+    wss.clients.forEach((client) => client.terminate());
+    wss.close();
+  });
+}
+
 export async function createServer(opts: ServerOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? true });
+  addSecurityHooks(app, DASHBOARD_CSP);
   app.get('/health', async () => ({ ok: true }));
 
   if (opts.youtubeCallback) {
@@ -42,21 +99,16 @@ export async function createServer(opts: ServerOptions): Promise<FastifyInstance
     );
   }
 
-  const modules = opts.modules;
-  if (modules) {
-    app.get('/m/:id', async (req, reply) => reply.redirect(`/m/${encodeURIComponent((req.params as { id: string }).id)}/`));
+  // Module pages live on their own port so they cannot act on the dashboard's origin. Old URLs
+  // saved in OBS still land here, so redirect them instead of breaking overlays mid-show.
+  if (opts.modules && opts.modulesUrl) {
+    app.get('/m/:id', async (req, reply) =>
+      reply.redirect(`${opts.modulesUrl}/m/${encodeURIComponent((req.params as { id: string }).id)}/`),
+    );
     app.get('/m/:id/*', async (req, reply) => {
       const params = req.params as { id: string; '*': string };
-      const file = await modules.serve(params.id, params['*']);
-      reply.header('X-Content-Type-Options', 'nosniff');
-      if (file.status === 404) return reply.code(404).type('text/plain; charset=utf-8').send(file.body);
-      // Pages carry this run's session token, so they must never be cached.
-      reply.header('Cache-Control', file.type.startsWith('text/html') ? 'no-store' : 'no-cache');
-      if (file.status === 200 && file.etag) {
-        reply.header('ETag', file.etag);
-        if (req.headers['if-none-match'] === file.etag) return reply.code(304).send();
-      }
-      return reply.type(file.type).send(file.body);
+      const rest = params['*'].split('/').map(encodeURIComponent).join('/');
+      return reply.redirect(`${opts.modulesUrl}/m/${encodeURIComponent(params.id)}/${rest}`);
     });
   }
 
@@ -74,12 +126,50 @@ export async function createServer(opts: ServerOptions): Promise<FastifyInstance
     bus: opts.bus,
     allowedOrigins: allowedOrigins(opts.port, opts.dev),
     authorizeDriver: opts.authorizeDriver,
-    authorizeModule: modules ? (id, token) => modules.authorize(id, token) : undefined,
+    authorizeModule: opts.modules ? (id, token) => opts.modules!.authorize(id, token) : undefined,
+    dashboardToken: opts.dashboardToken,
   });
-  // Upgraded sockets keep the HTTP server open, so close them before Fastify waits on it.
-  app.addHook('preClose', async () => {
-    wss.clients.forEach((client) => client.terminate());
-    wss.close();
+  closeWebSockets(app, wss);
+  return app;
+}
+
+export type ModulesServerOptions = {
+  bus: Bus;
+  port: number;
+  modules: ModuleHost;
+  logger?: FastifyServerOptions['logger'];
+};
+
+/**
+ * Serves module pages and their WebSocket endpoint on a dedicated loopback port. The dashboard
+ * role does not exist here, so same-origin module JS can never drive OBS or read dashboard state.
+ */
+export async function createModulesServer(opts: ModulesServerOptions): Promise<FastifyInstance> {
+  const app = Fastify({ logger: opts.logger ?? true });
+  addSecurityHooks(app, MODULE_CSP);
+  app.get('/health', async () => ({ ok: true }));
+
+  const modules = opts.modules;
+  app.get('/m/:id', async (req, reply) => reply.redirect(`/m/${encodeURIComponent((req.params as { id: string }).id)}/`));
+  app.get('/m/:id/*', async (req, reply) => {
+    const params = req.params as { id: string; '*': string };
+    const file = await modules.serve(params.id, params['*']);
+    if (file.status === 404) return reply.code(404).type('text/plain; charset=utf-8').send(file.body);
+    // Pages and the session script carry this run's session token, so they must never be cached.
+    reply.header('Cache-Control', file.noStore ? 'no-store' : 'no-cache');
+    if (file.etag) {
+      reply.header('ETag', file.etag);
+      if (req.headers['if-none-match'] === file.etag) return reply.code(304).send();
+    }
+    return reply.type(file.type).send(file.body);
   });
+
+  const wss = attachWebSocket(app.server, {
+    bus: opts.bus,
+    allowedOrigins: allowedOrigins(opts.port, false),
+    authorizeModule: (id, token) => modules.authorize(id, token),
+    allowDashboard: false,
+  });
+  closeWebSockets(app, wss);
   return app;
 }

@@ -1,3 +1,6 @@
+import { randomBytes } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import OBSWebSocket, { EventSubscription } from 'obs-websocket-js';
 import { WebSocket } from 'ws';
@@ -31,7 +34,7 @@ import { RecordingService } from './recording/service';
 import { loadObsSettings, ObsSettingsService } from './obs/settings';
 import { runtimePaths } from './runtime';
 import { SecretsStore } from './secrets/store';
-import { createServer } from './server';
+import { createModulesServer, createServer } from './server';
 
 const paths = runtimePaths();
 loadDotenv({ path: paths.env, quiet: true });
@@ -134,6 +137,13 @@ const driverHost = new DriverHost({
   onExit: (id, detail) => cameras.driverExited(id, detail),
 });
 
+// Non-browser clients (local tools, tests) prove they may drive the hub with this per-run token;
+// browsers prove it with their Origin. Written owner-only so other OS users cannot read it.
+const dashboardToken = randomBytes(24).toString('base64url');
+await mkdir(dirname(paths.secrets), { recursive: true, mode: 0o700 });
+await writeFile(join(dirname(paths.secrets), 'dashboard-token'), `${dashboardToken}\n`, { mode: 0o600 });
+
+const modulesUrl = `http://${cfg.host}:${cfg.modulesPort}`;
 const app = await createServer({
   bus,
   port: cfg.port,
@@ -143,18 +153,25 @@ const app = await createServer({
   xCallback: (q) => connections.handleXCallback(q),
   authorizeDriver: (id, token) => driverHost.authorize(id, token),
   modules,
+  modulesUrl,
+  dashboardToken,
 });
+const modulesApp = await createModulesServer({ bus, port: cfg.modulesPort, modules });
 
-try {
-  await app.listen({ host: cfg.host, port: cfg.port });
-} catch (err) {
-  if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-    console.error(`Port ${cfg.port} is already in use. Set HUB_PORT in .env to another port.`);
-    process.exit(1);
+const listen = async (server: typeof app, port: number, envKey: string) => {
+  try {
+    await server.listen({ host: cfg.host, port });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use. Set ${envKey} in .env to another port.`);
+      process.exit(1);
+    }
+    throw err;
   }
-  throw err;
-}
-bus.publish({ type: 'modules.list', payload: modules.list(`http://${cfg.host}:${cfg.port}`), source: 'hub' });
+};
+await listen(app, cfg.port, 'HUB_PORT');
+await listen(modulesApp, cfg.modulesPort, 'HUB_MODULES_PORT');
+bus.publish({ type: 'modules.list', payload: modules.list(modulesUrl), source: 'hub' });
 cameras.start();
 audio.start();
 headsets.start();

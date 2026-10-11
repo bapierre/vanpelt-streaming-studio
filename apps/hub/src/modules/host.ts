@@ -27,8 +27,11 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 export type ServedFile =
-  | { status: 200; type: string; body: Buffer | string; etag?: string }
+  | { status: 200; type: string; body: Buffer | string; etag?: string; noStore?: boolean }
   | { status: 404; body: string };
+
+/** Virtual per-module script that hands the page its session token (kept out of HTML so pages can run with `script-src 'self'`). */
+export const SESSION_SCRIPT = '__session.js';
 
 /**
  * Finds overlay modules (`modules/<id>/manifest.json` with `overlays`), serves their built pages
@@ -114,6 +117,10 @@ export class ModuleHost {
     if (rel.split('/').some((part) => part === '..' || part === '' || part.startsWith('.'))) {
       return { status: 404, body: 'Not found' };
     }
+    if (rel === SESSION_SCRIPT) {
+      const body = `window.__STREAMHUB__=${JSON.stringify({ module: id, token: m.token })};`;
+      return { status: 200, type: 'text/javascript; charset=utf-8', body, noStore: true };
+    }
     let file: string;
     let root: string;
     try {
@@ -134,18 +141,22 @@ export class ModuleHost {
       return { status: 404, body: 'Not found' };
     }
     // Assets revalidate against this ETag (Cache-Control: no-cache), so unchanged ones answer 304.
-    // HTML is excluded: it carries the session token and is served no-store.
+    // HTML is excluded: it references the session token and is served no-store.
     if (ext !== '.html') {
       const etag = `"${createHash('sha256').update(body).digest('base64url')}"`;
       return { status: 200, type, body, etag };
     }
-    return { status: 200, type, body: injectSession(body.toString('utf8'), id, m.token) };
+    return { status: 200, type, body: injectSession(body.toString('utf8'), id), noStore: true };
   }
 }
 
-/** The page reads `window.__STREAMHUB__` to connect as its module. Cross-origin pages cannot read it. */
-export function injectSession(html: string, module: string, token: string): string {
-  const script = `<script>window.__STREAMHUB__=${JSON.stringify({ module, token })};</script>`;
+/**
+ * The page loads `/m/<id>/__session.js`, which sets `window.__STREAMHUB__` for connecting as its
+ * module. Pages on other origins cannot read it, and keeping the token out of the HTML lets module
+ * pages run under `script-src 'self'`.
+ */
+export function injectSession(html: string, module: string): string {
+  const script = `<script src="/m/${module}/${SESSION_SCRIPT}"></script>`;
   const head = html.match(/<head[^>]*>/i);
   if (!head) return `${script}${html}`;
   const at = head.index! + head[0].length;

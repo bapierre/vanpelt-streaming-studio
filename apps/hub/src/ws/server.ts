@@ -27,7 +27,17 @@ export const DASHBOARD_PUBLISHABLE = [
 export const NEVER_FORWARDED = ['connections.cmd.', 'destinations.cmd.'];
 /** Hub ↔ camera driver traffic: only the owning driver connection sees it. */
 export const DRIVER_ONLY = ['camera.driver.'];
+/** Dashboard-only state (auth flow URLs/codes, stream keys, OBS settings) that module pages must never receive. */
+export const DASHBOARD_ONLY = ['connections.state', 'destinations.list', 'obs.settings'];
 export const MAX_MESSAGE_BYTES = 64 * 1024;
+/** One client may not subscribe to more topics than this; `a.*` patterns keep the legitimate need tiny. */
+export const MAX_TOPICS = 256;
+
+const LOOPBACK_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?$/;
+/** The hub binds loopback, but a forged Host header still enables DNS-rebinding tricks; refuse it. */
+export function isLoopbackHost(host: string | undefined): boolean {
+  return host !== undefined && LOOPBACK_HOST.test(host);
+}
 
 /** Returns the camera ids the driver owns, or null when the token is not valid for that driver. */
 export type AuthorizeDriver = (driverId: string, token: string) => string[] | null;
@@ -40,6 +50,14 @@ export type WsOptions = {
   allowedOrigins: string[];
   authorizeDriver?: AuthorizeDriver;
   authorizeModule?: AuthorizeModule;
+  /**
+   * Non-browser clients (no Origin header) must present this per-run token to get the dashboard
+   * role. Loopback is not a trust boundary on a shared machine, so an absent Origin alone is not
+   * enough. When unset, non-browser dashboard connections are refused.
+   */
+  dashboardToken?: string;
+  /** Set false on listeners where the dashboard role must not exist at all (module pages port). */
+  allowDashboard?: boolean;
 };
 
 type Role = {
@@ -77,13 +95,18 @@ export function moduleRole(manifest: ModuleManifest): Role {
     canReceive: (e) =>
       topicMatches(manifest.subscribes, e.type) &&
       !startsWithAny(e.type, NEVER_FORWARDED) &&
-      !startsWithAny(e.type, DRIVER_ONLY),
+      !startsWithAny(e.type, DRIVER_ONLY) &&
+      !DASHBOARD_ONLY.includes(e.type),
   };
 }
 
-/** Browsers always send Origin; a missing Origin means a local non-browser client. */
+/**
+ * Browsers always send Origin. A present Origin must be on the allowlist; an absent Origin means a
+ * local non-browser client, which needs the dashboard token for the dashboard role (drivers and
+ * modules authenticate with their own tokens instead).
+ */
 export function isOriginAllowed(origin: string | undefined, allowed: string[]): boolean {
-  return origin === undefined || allowed.includes(origin);
+  return origin !== undefined && allowed.includes(origin);
 }
 
 /** High-rate, replayable events a slow client may skip; everything else queues. */
@@ -140,37 +163,42 @@ export function attachWebSocket(server: Server, opts: WsOptions): WebSocketServe
   });
 
   server.on('upgrade', (req, socket, head) => {
+    // Rejected sockets are raw TCP: swallow late errors so a hung-up peer can't crash the process.
+    const reject = () => {
+      socket.once('error', () => {});
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    };
     // Compare the raw path: parsing with URL throws on inputs like `//`, and this runs before the Origin check.
     const [pathname, query = ''] = (req.url ?? '/').split('?');
     if (pathname !== '/ws') {
+      socket.once('error', () => {});
       socket.destroy();
       return;
     }
-    if (!isOriginAllowed(req.headers.origin, opts.allowedOrigins)) {
-      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-      return;
-    }
-    let role = dashboardRole;
+    if (!isLoopbackHost(req.headers.host)) return reject();
+    const origin = req.headers.origin;
     const params = new URLSearchParams(query);
+    let role: Role;
     const driverId = params.get('driver');
+    const moduleId = params.get('module');
     if (driverId !== null) {
       // Drivers are local processes; a browser page must never be able to claim a driver role.
-      const cameraIds =
-        req.headers.origin === undefined ? opts.authorizeDriver?.(driverId, params.get('token') ?? '') : null;
-      if (!cameraIds) {
-        socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-        return;
-      }
+      const cameraIds = origin === undefined ? opts.authorizeDriver?.(driverId, params.get('token') ?? '') : null;
+      if (!cameraIds) return reject();
       role = driverRole(driverId, cameraIds);
-    }
-    const moduleId = params.get('module');
-    if (moduleId !== null) {
+    } else if (moduleId !== null) {
+      if (origin !== undefined && !opts.allowedOrigins.includes(origin)) return reject();
       const manifest = opts.authorizeModule?.(moduleId, params.get('token') ?? '');
-      if (!manifest) {
-        socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-        return;
-      }
+      if (!manifest) return reject();
       role = moduleRole(manifest);
+    } else {
+      if (opts.allowDashboard === false) return reject();
+      if (origin !== undefined) {
+        if (!opts.allowedOrigins.includes(origin)) return reject();
+      } else if (!opts.dashboardToken || params.get('token') !== opts.dashboardToken) {
+        return reject();
+      }
+      role = dashboardRole;
     }
     wss.handleUpgrade(req, socket, head, (ws) => handleClient(clients, ws, opts.bus, role));
   });
@@ -204,6 +232,7 @@ function handleClient(clients: Set<Client>, ws: WebSocket, bus: Bus, role: Role)
     switch (op.op) {
       case 'subscribe': {
         const fresh = op.topics.filter((t) => !topics.has(t));
+        if (topics.size + fresh.length > MAX_TOPICS) return fail('bad_op', 'too many topic subscriptions');
         const before = [...topics];
         fresh.forEach((t) => topics.add(t));
         for (const event of bus.retainedFor(fresh)) {

@@ -38,6 +38,7 @@ beforeEach(async () => {
     allowedOrigins: [ORIGIN],
     authorizeDriver: (id, token) => (id === 'camera-gopro' && token === 'good' ? ['gopro'] : null),
     authorizeModule: (id, token) => (id === 'alerts' && token === 'tok' ? ALERTS_MANIFEST : null),
+    dashboardToken: 'dash-tok',
   });
   await new Promise<void>((r) => http.listen(0, '127.0.0.1', r));
   port = (http.address() as AddressInfo).port;
@@ -49,9 +50,9 @@ afterEach(async () => {
   await new Promise((r) => http.close(r));
 });
 
-function open(origin?: string, query = ''): Promise<TestClient> {
+function open(origin?: string, query = '', headers: Record<string, string> = {}): Promise<TestClient> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws${query}`, origin ? { origin } : {});
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws${query}`, { ...(origin ? { origin } : {}), headers });
     clients.push(ws);
     const inbox: ServerMessage[] = [];
     const waiters: Array<(m: ServerMessage) => void> = [];
@@ -85,15 +86,27 @@ async function sync(c: TestClient) {
 }
 
 describe('origin check', () => {
-  it('accepts the hub origin and non-browser clients', async () => {
+  it('accepts the hub origin', async () => {
     await expect(open(ORIGIN)).resolves.toBeDefined();
-    await expect(open()).resolves.toBeDefined();
+  });
+  it('rejects non-browser clients without the dashboard token', async () => {
+    await expect(open()).rejects.toThrow('HTTP 403');
+    await expect(open(undefined, '?token=wrong')).rejects.toThrow('HTTP 403');
+  });
+  it('accepts non-browser clients that present the dashboard token', async () => {
+    const c = await open(undefined, '?token=dash-tok');
+    c.send({ op: 'publish', event: { type: 'obs.cmd.setScene', payload: { scene: 'Main' } } });
+    await sync(c);
   });
   it('rejects other websites', async () => {
     await expect(open('https://evil.example')).rejects.toThrow('HTTP 403');
   });
   it('rejects the null origin', async () => {
     await expect(open('null')).rejects.toThrow('HTTP 403');
+  });
+  it('rejects a forged Host header (DNS rebinding)', async () => {
+    await expect(open(ORIGIN, '', { host: 'evil.example' })).rejects.toThrow('HTTP 403');
+    await expect(open(ORIGIN, '', { host: 'localhost:4747' })).resolves.toBeDefined();
   });
 });
 
@@ -169,6 +182,16 @@ describe('ops', () => {
     const closed = new Promise<number>((r) => c.ws.on('close', (code) => r(code)));
     c.send('x'.repeat(MAX_MESSAGE_BYTES + 1));
     expect(await closed).toBe(1009);
+  });
+
+  it('caps how many topics one client may subscribe to', async () => {
+    const c = await open(ORIGIN);
+    for (let batch = 0; batch < 5; batch++) {
+      c.send({ op: 'subscribe', topics: Array.from({ length: 50 }, (_, i) => `t${batch * 50 + i}`) });
+      await sync(c);
+    }
+    c.send({ op: 'subscribe', topics: Array.from({ length: 50 }, (_, i) => `over${i}`) });
+    expect(await c.next()).toMatchObject({ op: 'error', code: 'bad_op', message: expect.stringContaining('too many') });
   });
 
   it('lets dashboards send connection commands', async () => {
@@ -284,6 +307,32 @@ describe('camera drivers', () => {
   });
 });
 
+describe('listeners without a dashboard role', () => {
+  it('refuses dashboard connections even from an allowed origin', async () => {
+    const http2 = createServer();
+    attachWebSocket(http2, {
+      bus: new Bus(),
+      allowedOrigins: [ORIGIN],
+      authorizeModule: (id, token) => (id === 'alerts' && token === 'tok' ? ALERTS_MANIFEST : null),
+      allowDashboard: false,
+    });
+    await new Promise<void>((r) => http2.listen(0, '127.0.0.1', r));
+    const port2 = (http2.address() as AddressInfo).port;
+    await expect(
+      new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port2}/ws`, { origin: ORIGIN });
+        ws.on('open', resolve);
+        ws.on('unexpected-response', (_req, res) => reject(new Error(`HTTP ${res.statusCode}`)));
+        ws.on('error', reject);
+      }),
+    ).rejects.toThrow('HTTP 403');
+    const ws = new WebSocket(`ws://127.0.0.1:${port2}/ws?module=alerts&token=tok`, { origin: ORIGIN });
+    await new Promise((r) => ws.on('open', r));
+    ws.terminate();
+    await new Promise((r) => http2.close(r));
+  });
+});
+
 describe('robustness', () => {
   it('survives a malformed upgrade path from any origin', async () => {
     await new Promise<void>((resolve) => {
@@ -305,6 +354,36 @@ describe('module pages', () => {
   it('refuses a module connection without its session token', async () => {
     await expect(open(ORIGIN, '?module=alerts&token=bad')).rejects.toThrow('HTTP 403');
     await expect(open(ORIGIN, '?module=other&token=tok')).rejects.toThrow('HTTP 403');
+  });
+
+  it('never receives dashboard-only state, even when the manifest subscribes to it', async () => {
+    const nosy = { ...ALERTS_MANIFEST, subscribes: ['*'] };
+    const bus2 = new Bus();
+    const http2 = createServer();
+    attachWebSocket(http2, {
+      bus: bus2,
+      allowedOrigins: [ORIGIN],
+      authorizeModule: (id, token) => (id === 'alerts' && token === 'tok' ? nosy : null),
+      dashboardToken: 'dash-tok',
+    });
+    await new Promise<void>((r) => http2.listen(0, '127.0.0.1', r));
+    const port2 = (http2.address() as AddressInfo).port;
+    const ws = new WebSocket(`ws://127.0.0.1:${port2}/ws?module=alerts&token=tok`, { origin: ORIGIN });
+    await new Promise((r) => ws.on('open', r));
+    ws.send(JSON.stringify({ op: 'history', reqId: 'h', topic: 'destinations.list', limit: 5 }));
+    const seen: ServerMessage[] = [];
+    ws.on('message', (d) => seen.push(JSON.parse(d.toString()) as ServerMessage));
+    bus2.publish({ type: 'destinations.list', payload: { destinations: [{ id: 'yt', key: 'SECRETKEY' }] }, source: 'hub' });
+    bus2.publish({ type: 'connections.state', payload: { youtube: { status: 'working', authUrl: 'https://x' } }, source: 'hub' });
+    bus2.publish({ type: 'obs.settings', payload: { url: 'ws://127.0.0.1:4455' }, source: 'hub' });
+    ws.send(JSON.stringify({ op: 'history', reqId: 'h2', topic: 'destinations.list', limit: 5 }));
+    await new Promise((r) => setTimeout(r, 50));
+    ws.terminate();
+    await new Promise((r) => http2.close(r));
+    const events = seen.filter((m) => !('op' in m));
+    expect(events).toEqual([]);
+    const results = seen.filter((m) => 'op' in m && m.op === 'history-result');
+    expect(results.every((m) => 'op' in m && m.op === 'history-result' && m.events.length === 0)).toBe(true);
   });
 
   it('receives only what the manifest subscribes to', async () => {

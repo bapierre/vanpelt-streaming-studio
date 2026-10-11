@@ -50,12 +50,15 @@ describe('ModuleHost', () => {
     ]);
   });
 
-  it('serves pages with the session token injected, and assets as they are', async () => {
+  it('serves pages referencing the session script, which carries the token', async () => {
     await addModule('alerts', manifest(), { 'popup.html': '<!doctype html><html><head><title>x</title></head></html>', 'app.js': 'go()' });
     const host = await ModuleHost.discover(root);
     const page = await host.serve('alerts', 'popup.html');
-    expect(page).toMatchObject({ status: 200, type: 'text/html; charset=utf-8' });
-    const token = /"token":"([0-9a-f]+)"/.exec(String((page as { body: string }).body))![1]!;
+    expect(page).toMatchObject({ status: 200, type: 'text/html; charset=utf-8', noStore: true });
+    expect(String((page as { body: string }).body)).toContain('/m/alerts/__session.js');
+    const session = await host.serve('alerts', '__session.js');
+    expect(session).toMatchObject({ status: 200, type: 'text/javascript; charset=utf-8', noStore: true });
+    const token = /"token":"([0-9a-f]+)"/.exec(String((session as { body: string }).body))![1]!;
     expect(host.authorize('alerts', token)?.id).toBe('alerts');
     expect(host.authorize('alerts', 'x')).toBeNull();
     expect(await host.serve('alerts', 'app.js')).toMatchObject({ status: 200, type: 'text/javascript; charset=utf-8' });
@@ -87,10 +90,10 @@ describe('ModuleHost', () => {
 });
 
 describe('injectSession', () => {
-  it('puts the session first in the head, or first in the page without one', () => {
-    expect(injectSession('<html><head lang="en"><title>t</title></head></html>', 'alerts', 'ab')).toBe(
-      '<html><head lang="en"><script>window.__STREAMHUB__={"module":"alerts","token":"ab"};</script><title>t</title></head></html>',
+  it('links the session script first in the head, or first in the page without one', () => {
+    expect(injectSession('<html><head lang="en"><title>t</title></head></html>', 'alerts')).toBe(
+      '<html><head lang="en"><script src="/m/alerts/__session.js"></script><title>t</title></head></html>',
     );
-    expect(injectSession('<p>hi</p>', 'alerts', 'ab')).toMatch(/^<script>.*<\/script><p>hi<\/p>$/);
+    expect(injectSession('<p>hi</p>', 'alerts')).toBe('<script src="/m/alerts/__session.js"></script><p>hi</p>');
   });
 });

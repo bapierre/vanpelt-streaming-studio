@@ -11,7 +11,7 @@ declare global {
 export function connectHub(): HubClient | null {
   const session = window.__STREAMHUB__;
   if (!session) {
-    console.warn('[alerts] open this page from the hub (http://127.0.0.1:4747/m/alerts/...)');
+    console.warn('[alerts] open this page from the hub (http://127.0.0.1:4748/m/alerts/...)');
     return null;
   }
   const hub = connect({ module: session.module, token: session.token });
