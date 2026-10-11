@@ -17,4 +17,6 @@ Each person or fork registers their own app; Twitch asks apps not to share clien
 ## Connect
 Dashboard → **Settings** (the Settings tab, or ⌘,) → **Platforms** → Twitch → **Connect**. Open the link, enter the code shown, and approve. The row turns **connected** with your login.
 
+streamhub asks to read your chat, your followers and your subscriptions. The last two are for alerts and goals ([docs/alerts.md](../alerts.md)); if you connected before alerts existed, press **Connect** again to allow them.
+
 streamhub re-checks the login every hour, as Twitch requires. If the login expires or you revoke access, the Twitch row shows the error; press **Connect** again.

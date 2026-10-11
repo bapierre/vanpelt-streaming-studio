@@ -97,26 +97,29 @@ Served by the hub at `http://127.0.0.1:4747/`. The Tauri desktop shell (`apps/de
 - Script/teleprompter view is **not** in the base (planned module).
 
 ### 7. Modules (`modules/*`)
-A module is a static web bundle + manifest, served at `http://127.0.0.1:4747/m/<id>/`.
+A module is a static web bundle + manifest, served at `http://127.0.0.1:4747/m/<id>/` (`apps/hub/src/modules`).
 ```json
 {
   "id": "featured-message",
   "name": "Featured message",
   "version": "0.1.0",
+  "web": "dist",
   "overlays": [{ "id": "main", "path": "index.html", "width": 1920, "height": 1080 }],
   "subscribes": ["show.feature."],
-  "publishes": [],
-  "settings": { "theme": { "type": "string", "default": "dark" } }
+  "publishes": []
 }
 ```
-- The hub discovers modules at startup by scanning `modules/*/manifest.json`.
+- The hub discovers modules at startup by scanning `modules/*/manifest.json` (the folder name must equal `id`; manifests without `overlays`, like camera drivers, are skipped). `modules.list` (retained) gives the dashboard each overlay's URL and whether it is built.
+- It serves only files inside the module's `web` folder (default `dist`): no `..`, no dotfiles, no symlinks out. HTML is sent `no-store`, and every page gets `window.__STREAMHUB__ = { module, token }` injected into `<head>`, with a random token per hub run.
 - Overlays connect with `@streamhub/overlay-sdk`:
   ```ts
-  const hub = connect({ module: 'featured-message' });
+  const { module, token } = window.__STREAMHUB__;
+  const hub = connect({ module, token });
   hub.on('show.feature.set', (e) => render(e.payload.message));
   ```
-- The hub enforces `subscribes` / `publishes` per module (it identifies the module from the `module` query param + a per-session token the hub injects into the served HTML).
-- This contract is what gets vibecoded live: **one stream = one new module folder.**
+- `/ws?module=<id>&token=<t>` with a wrong token is refused (403). A module connection receives only its `subscribes` (never secrets or driver traffic) and may publish only the `module.<id>.*` types in its `publishes`.
+- `pnpm build` and `pnpm dev` build every module that has a `build` or `dev` script. Desktop builds copy each overlay module's manifest and built pages into the app.
+- This contract is what gets vibecoded live: **one stream = one new module folder.** The first module is `modules/alerts` (§13).
 
 ### 8. Relay (`apps/relay`, M3)
 A hosted, self-hostable Cloudflare Worker that receives Kick webhooks and does Kick OAuth, and forwards events to the hub over a WebSocket the hub opens outbound. It is the only internet-facing component. Design: docs/superpowers/specs/2026-10-01-streamhub-base-design.md §4.3.
@@ -151,13 +154,22 @@ Per-person headphone mixes, played by OBS through the third-party [Audio Monitor
 - Output devices are listed from `system_profiler SPAudioDataType -json` on macOS; elsewhere the user types the name. A headset whose device is missing says so.
 - Simulated in tests with the same fake OBS as audio. Guide: `docs/audio/headsets.md`.
 
+### 13. Alerts and goals (`apps/hub/src/alerts`, `modules/alerts`)
+Free, self-owned alerts: events come straight from the platforms, never from StreamElements or Streamlabs.
+- **Sources:** Twitch EventSub `channel.chat.notification` (subs, resubs, gift subs, raids), `channel.follow` v2 and the `cheer` field of `channel.chat.message`; YouTube live chat Super Chats, Super Stickers, new members, milestones and gifted memberships. Totals for `total` goals come from Twitch Get Channel Followers / Get Broadcaster Subscriptions and YouTube channel statistics (`platform.totals`). Details and links: `docs/connectors/alerts.md`.
+- **Alert service:** drops repeats by alert id (and repeat follows by the same user), keeps the last 50, and plays one alert at a time with a 1 s gap. Pause holds the queue (up to 100); skip ends the current one; tests and replays play even when their kind is off. Per-kind text, sound, volume, duration and minimum, plus the goals and their counts, are saved to `.streamhub/alerts.json` (debounced, atomic).
+- **Goals:** followers, subs or tips, per stream or channel total, over chosen platforms. Stream counts restart on go-live unless the stream was down less than 15 minutes (a crash or a restart).
+- **Overlays:** `modules/alerts` builds `popup.html` (one card per alert, synthesized sounds, so no audio files) and `goal.html?goal=<id>` (one bar per goal). The pages render alert text as text only.
+- **Dashboard:** Settings → Alerts (pop-up URL, pause and skip, per-kind settings with Test, recent alerts with Replay) and Settings → Goals.
+- Tested with simulated EventSub frames and YouTube responses only. Guide: `docs/alerts.md`.
+
 ## Config & secrets
 - `.env` (gitignored): `HUB_PORT`, `OBS_WS_URL`, `OBS_WS_PASSWORD`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_CHANNEL`, `YOUTUBE_API_KEY` / OAuth creds, `KICK_*`.
 - `config/` (committed, no secrets): sequences, platform colors, enabled connectors.
 - Desktop builds use the OS application-data directory for `.env` and `.streamhub/secrets.json`; development keeps the repo paths. OS keychain storage is deferred. OAuth continues in the system browser.
 
 ## Security
-- Listen on 127.0.0.1 only. Reject WebSocket connections whose Origin is not the hub itself (or the Vite dev server in development). OBS Browser Sources load overlays from the hub, so they send the hub's origin. Modules additionally need their session token (M4).
+- Listen on 127.0.0.1 only. Reject WebSocket connections whose Origin is not the hub itself (or the Vite dev server in development). OBS Browser Sources load overlays from the hub, so they send the hub's origin. Modules additionally need their session token (§7).
 - Treat all chat text as untrusted: render as text, never `innerHTML`.
 
 ## Out of scope for the base

@@ -278,8 +278,73 @@ type RecordingSession = {
 | `recording.cmd.start` | `{}` start OBS recording |
 | `recording.cmd.stop` | `{}` stop OBS recording (the dashboard asks for a second click) |
 
+## Alerts and goals
+Follows, subs, gift subs, cheers, tips and raids come straight from the platforms (Twitch EventSub, YouTube live chat; no third-party alert service). Connectors publish one `alert.event` each; the hub's alert service drops duplicates, keeps the last 50, and plays them one at a time on the alerts overlay (`alert.show`, then `alert.hide` after `durationMs`, then a 1 s gap). Settings and goals live in `.streamhub/alerts.json`. Sources per platform: `docs/connectors/alerts.md`. Guide: `docs/alerts.md`.
+```ts
+type Alert = {
+  id: string;                  // `${platform}:${platform event id}`
+  kind: 'follow' | 'sub' | 'resub' | 'giftsub' | 'cheer' | 'tip' | 'raid';  // sub also covers a new YouTube membership
+  platform: 'twitch' | 'youtube' | 'kick';
+  user: { id: string; name: string; avatarUrl?: string };  // anonymous gifts: { id: 'anonymous', name: 'Anonymous' }
+  amount?: number;             // cheer: bits. tip: whole units of currency (5.5 = 5.50)
+  currency?: string;           // ISO 4217, tips only
+  amountText?: string;         // as the platform writes it, e.g. "$5.00"
+  count?: number;              // giftsub: subs gifted. raid: viewers
+  months?: number;             // resub: total months
+  tier?: string;               // Twitch "1" | "2" | "3" | "Prime"; YouTube membership level name
+  message?: string;
+  at: number;
+  test?: true;                 // from a Test button: shown, never counted toward a goal
+};
+type AlertKindConfig = {
+  enabled: boolean;
+  template: string;            // placeholders {user} {amount} {count} {months} {tier}
+  sound: 'chime' | 'pop' | 'coin' | 'fanfare' | 'none';  // synthesized by the overlay
+  volume: number;              // 0..1
+  durationMs: number;          // 2000..30000
+  minAmount: number;           // smaller cheers (bits), tips, raids (viewers), gifts (subs) are not shown; still counted
+};
+type AlertsConfig = { paused: boolean; kinds: Record<Alert['kind'], AlertKindConfig> };
+type Goal = {
+  id: string;                  // slug: [a-z0-9-]+
+  label: string;
+  metric: 'followers' | 'subs' | 'tips';
+  scope: 'stream' | 'total';   // stream: from go-live; total: the channel's count (tips: since the goal was made)
+  target: number;
+  currency?: string;           // tips goals only; other currencies are not counted
+  platforms: Alert['platform'][];
+};
+type GoalState = Goal & { current: number; approximate?: true; detail?: string };
+```
+Counting: followers = follows (YouTube subscribers only come in through totals). Subs = subs, gift subs (by count) and, for stream goals, resubs. Tips = tips in the goal's currency. A `total` goal is the platform's last reported total plus what arrived since. Stream goals restart at 0 when the stream goes live, unless it went down less than 15 minutes earlier.
+
+| type | payload |
+|---|---|
+| `alert.event` | `Alert` (connectors) |
+| `alert.show` | `{ alert, text, sound, volume, durationMs }` `text` is the rendered template |
+| `alert.hide` | `{ id }` |
+| `alert.recent` | `{ alerts: Alert[] (newest first, up to 50), queued }` (retained) |
+| `alert.config` | `AlertsConfig` (retained) |
+| `alert.cmd.test` | `{ kind }` a sample alert, shown even when its kind is off |
+| `alert.cmd.replay` | `{ id }` one from `alert.recent` |
+| `alert.cmd.skip` | `{}` hide the current alert now |
+| `alert.cmd.pause` | `{ paused }` while paused, alerts wait in the queue (up to 100) |
+| `alert.cmd.setKind` | `{ kind, enabled?, template?, sound?, volume?, durationMs?, minAmount? }` |
+| `platform.totals` | `{ platform, followers?, subs?, approximate? }` (retained per platform) Twitch every 5 min (followers; subs need `channel:read:subscriptions`), YouTube every 10 min (subscribers, rounded by YouTube) |
+| `goal.state` | `{ goals: GoalState[] }` up to 20 (retained) |
+| `goal.cmd.save` | `Goal` add, or replace by id; changing metric, scope or currency restarts the count |
+| `goal.cmd.remove` | `{ id }` |
+| `goal.cmd.reset` | `{ id }` back to 0 (stream goals and tips) |
+
+## Modules
+Overlay modules are folders under `modules/` with a `manifest.json` that lists `overlays` (see ARCHITECTURE.md §7). The hub serves their built pages at `/m/<id>/` and injects a per-run session token.
+
+| type | payload |
+|---|---|
+| `modules.list` | `{ modules: { id, name, version, built, overlays: { id, name, url, width, height }[] }[] }` (retained) `url` goes into an OBS Browser Source; `built` is false until the pages are built |
+
 ## Module events
-Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`.
+Modules publish under `module.<moduleId>.<action>` only, and only types listed in their manifest `publishes`. A module page receives only the topics its manifest `subscribes` to.
 
 ## WebSocket control ops (client → hub)
 ```jsonc
@@ -292,6 +357,6 @@ Hub → client: envelopes, plus
 - `{ "op": "error", "code": "bad_json"|"bad_op"|"bad_payload"|"forbidden", "message": string }`; the connection stays open.
 - `{ "op": "history-result", "reqId": string, "events": Envelope[] }`
 
-**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `obs.settings`, `obs.sources.list`, `destinations.list`, `relay.connection`, `platform.status` and `platform.live` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state`, `audio.devices`, `headsets.state` and `recording.state` that match the new topics, oldest first. A reloaded dashboard is correct at once.
+**Retained state:** on `subscribe`, the hub immediately sends the latest `obs.connection`, `obs.scenes.list`, `obs.scene.changed`, `obs.stream.state`, `obs.settings`, `obs.sources.list`, `destinations.list`, `relay.connection`, `platform.status` and `platform.live` (one per platform), `connections.state` (one per platform), `camera.state` (one per camera), `audio.state`, `audio.devices`, `headsets.state`, `recording.state`, `alert.config`, `alert.recent`, `goal.state`, `platform.totals` (one per platform) and `modules.list` that match the new topics, oldest first. A reloaded dashboard is correct at once.
 
-**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*`, `audio.cmd.*`, `recording.cmd.*` and `headsets.cmd.*`, and never receive `camera.driver.*`.
+**Limits:** frames over 64 KB close the connection (code 1009). Dashboard clients may publish only `obs.cmd.*`, `show.*`, `connections.cmd.*`, `camera.cmd.*`, `destinations.cmd.*`, `audio.cmd.*`, `recording.cmd.*`, `headsets.cmd.*`, `alert.cmd.*` and `goal.cmd.*`, and never receive `camera.driver.*`. Module pages (`/ws?module=<id>&token=<t>`) follow their manifest instead.

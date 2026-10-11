@@ -23,6 +23,9 @@ One press of Record gives you everything to cut a video afterwards, all encoded 
 
 Set up the mics with [docs/audio/mics.md](docs/audio/mics.md), the cameras with [docs/cameras/](docs/cameras/), and recording with [docs/setup/recording.md](docs/setup/recording.md).
 
+## Alerts and goals
+Follows, subs, gift subs, cheers, Super Chats and raids pop up on stream with a sound, and goal bars track followers, subs or tips. They come straight from Twitch and YouTube, with no alert service account. Set them up with [docs/alerts.md](docs/alerts.md).
+
 ## Turn the recordings into YouTube videos
 streamhub gets the show recorded. [Vanpelt Studio](https://vanpelt.studio) helps with what comes next: it works like an expert YouTube team, finding the videos your audience already wants, then helping you script, shoot, check and package every one (titles and thumbnails included). You edit in whatever editor you like.
 

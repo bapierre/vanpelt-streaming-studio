@@ -5,7 +5,7 @@ The approved design is `docs/superpowers/specs/2026-10-01-streamhub-base-design.
 - [x] M0 Skeleton + M1 Bus, OBS, multistream, dashboard (`plans/2026-10-01-streamhub-m0-m1-foundation.md`); code done, go-live acceptance with real OBS pending
 - [x] M2 Direct chat: Twitch + YouTube (`plans/2026-10-01-streamhub-m2-chat.md`); live acceptance pending
 - [ ] M3 Relay + Kick
-- [ ] M4 Module host + settings
+- [ ] M4 Module host + settings: host done (manifests, `/m/<id>/`, per-run token, subscribes/publishes enforced, `modules.list`, desktop packaging); per-module settings UI not started
 
 ## After the base
 - [x] Initial Tauri desktop shell (bundled local hub + existing dashboard, `docs/desktop.md`); keychain storage and signed distribution deferred
@@ -14,5 +14,6 @@ The approved design is `docs/superpowers/specs/2026-10-01-streamhub-base-design.
 - [x] Mics: one OBS track per mic (up to 5) plus the stream mix, per-mic fader/mute/monitoring/sync/voice filters, automatic sound check to a target level, add mics from devices, split two-person stereo devices, dashboard mixer and meters (`docs/audio/mics.md`); hardware acceptance pending, Mono for split devices must be ticked in OBS by hand
 - [x] Dashboard tabs (Live, Sound, Chat, Settings) with Record, Start stream and the status bar on every tab; browser-saved start tab and chat text size
 - [x] Headsets: a mix per person through the Audio Monitor plugin, per-source on/off and level, master level and mute, output devices listed on macOS (`docs/audio/headsets.md`); hardware acceptance pending: Audio Monitor on this OBS version and the output delay with several USB adapters
+- [x] Alerts and goals, no third-party service: Twitch follows, subs, resubs, gift subs, cheers and raids; YouTube Super Chats, Super Stickers and memberships; one-at-a-time pop-up overlay with synthesized sounds; goal bars for followers, subs or tips per stream or channel total; Settings → Alerts and Goals (`docs/alerts.md`); live acceptance pending with real Twitch and YouTube events. Follow-ups: Ko-fi and other tip pages through the relay, Kick alerts with M3, custom sound files and per-alert images
 
 Live-coded modules: chat overlay · featured message · transitions · sequencer · teleprompter · roast-o-meter · karaoke picker · hackathon voting · average-ness score · fake-money bets · chat-triggered sounds.
