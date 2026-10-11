@@ -8,6 +8,8 @@ import { DestinationsPanel } from './components/DestinationsPanel';
 import { Icon } from './components/Icon';
 import { ObsSettings, ObsTools } from './components/Obs';
 import { PlatformLiveBadge } from './components/PlatformLive';
+import { RecordControls } from './components/RecordControls';
+import { RecordingPanel } from './components/RecordingPanel';
 import { ScenePanel } from './components/ScenePanel';
 import { SettingsSheet } from './components/SettingsSheet';
 import { SourcesPanel } from './components/SourcesPanel';
@@ -16,12 +18,14 @@ import { StreamControls } from './components/StreamControls';
 import { useAudio } from './useAudio';
 import { useCameras } from './useCameras';
 import { useDashboardState } from './useDashboardState';
+import { useRecording } from './useRecording';
 
 export function App({ client }: { client: HubClient }) {
   // Setup lives in a sheet that is closed by default, so a shared screen never shows keys or codes.
   const [settings, setSettings] = useState<string | null>(null);
   const state = useDashboardState(client);
   const cameras = useCameras(client);
+  const recording = useRecording(client);
   const takeCamera = (id: string) => client.publish('camera.cmd.take', { id });
   const audio = useAudio(client);
   const audioActions: AudioActions = {
@@ -66,6 +70,12 @@ export function App({ client }: { client: HubClient }) {
           <Icon name="settings" />
           {platformsNeedAttention && <span className="attention" />}
         </button>
+        <RecordControls
+          recording={recording}
+          disabled={!obsReady}
+          onStart={() => client.publish('recording.cmd.start')}
+          onStop={() => client.publish('recording.cmd.stop')}
+        />
         <StreamControls
           stream={state.stream}
           disabled={!obsReady}
@@ -90,6 +100,7 @@ export function App({ client }: { client: HubClient }) {
             disabled={!obsReady}
             onToggle={(scene, source, visible) => client.publish('obs.cmd.setSourceVisible', { scene, source, visible })}
           />
+          <RecordingPanel recording={recording} />
         </aside>
         <main className="content">
           <ChatPanel
@@ -100,7 +111,7 @@ export function App({ client }: { client: HubClient }) {
           />
         </main>
       </div>
-      <StatusBar state={state} />
+      <StatusBar state={state} recording={recording} />
       {settings && (
         <SettingsSheet
           initial={settings}

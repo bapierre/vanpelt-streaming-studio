@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import type { RecordingSession } from '@streamhub/shared';
+import { diskWarning, isRecording } from '../recording';
 import { formatUptime, type DashboardState } from '../state';
 
 export function useNow(intervalMs: number) {
@@ -12,10 +14,11 @@ export function useNow(intervalMs: number) {
 
 const Dot = ({ ok }: { ok: boolean }) => <span className={ok ? 'dot ok' : 'dot bad'} aria-hidden />;
 
-export function StatusBar({ state }: { state: DashboardState }) {
+export function StatusBar({ state, recording = null }: { state: DashboardState; recording?: RecordingSession | null }) {
   const now = useNow(1000);
   const { stream } = state;
   const platforms = Object.entries(state.platforms);
+  const disk = diskWarning(recording);
   return (
     <footer className="status-bar">
       <span><Dot ok={state.hubConnected} /> Hub</span>
@@ -30,6 +33,13 @@ export function StatusBar({ state }: { state: DashboardState }) {
       ) : (
         <span className="muted">stream unknown</span>
       )}
+      {state.obs.connected && isRecording(recording) && (
+        <span className="rec-status-bar">
+          <span className="dot bad" /> {recording?.output === 'paused' ? 'rec paused' : 'rec'}
+          {recording?.output === 'recording' && recording.startedAt !== undefined && ` · ${formatUptime(now - recording.startedAt)}`}
+        </span>
+      )}
+      {disk && <span className={`rec-disk ${recording?.disk?.level}`}>{disk}</span>}
       {platforms.length === 0 ? (
         <span className="muted">No chat connectors yet</span>
       ) : (

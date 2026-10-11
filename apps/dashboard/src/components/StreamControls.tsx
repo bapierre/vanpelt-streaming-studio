@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
 import { formatUptime, type DashboardState } from '../state';
+import { useConfirm } from '../useConfirm';
 import { useNow } from './StatusBar';
 
 function OnAir({ stream }: { stream: DashboardState['stream'] }) {
@@ -30,21 +30,9 @@ export function StreamControls({
   confirmMs = 4000,
   minConfirmMs = 500,
 }: Props) {
-  const [armed, setArmed] = useState(false);
-  const armedAt = useRef(0);
-
-  useEffect(() => {
-    if (!armed) return;
-    const t = setTimeout(() => setArmed(false), confirmMs);
-    return () => clearTimeout(t);
-  }, [armed, confirmMs]);
-
   const live = stream.state === 'live' || stream.state === 'starting';
-
   // If the stream flips (e.g. started from OBS) while armed, the confirm would do the opposite.
-  useEffect(() => {
-    setArmed(false);
-  }, [live]);
+  const { armed, click } = useConfirm({ confirmMs, minConfirmMs, resetKey: live });
   const changing = stream.state === 'starting' || stream.state === 'stopping';
   const label = armed
     ? live
@@ -54,17 +42,7 @@ export function StreamControls({
       ? 'Stop stream'
       : 'Start stream';
 
-  const onClick = () => {
-    if (!armed) {
-      armedAt.current = Date.now();
-      setArmed(true);
-      return;
-    }
-    if (Date.now() - armedAt.current < minConfirmMs) return;
-    setArmed(false);
-    if (live) onStop();
-    else onStart();
-  };
+  const onClick = () => click(live ? onStop : onStart);
 
   return (
     <div className="stream-controls">
