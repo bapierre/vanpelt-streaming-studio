@@ -15,5 +15,8 @@ The approved design is `docs/superpowers/specs/2026-10-01-streamhub-base-design.
 - [x] Dashboard tabs (Live, Sound, Chat, Settings) with Record, Start stream and the status bar on every tab; browser-saved start tab and chat text size
 - [x] Headsets: a mix per person through the Audio Monitor plugin, per-source on/off and level, master level and mute, output devices listed on macOS (`docs/audio/headsets.md`); hardware acceptance pending: Audio Monitor on this OBS version and the output delay with several USB adapters
 - [x] Alerts and goals, no third-party service: Twitch follows, subs, resubs, gift subs, cheers and raids; YouTube Super Chats, Super Stickers and memberships; one-at-a-time pop-up overlay with synthesized sounds; goal bars for followers, subs or tips per stream or channel total; Settings → Alerts and Goals (`docs/alerts.md`); live acceptance pending with real Twitch and YouTube events. Follow-ups: Ko-fi and other tip pages through the relay, Kick alerts with M3, custom sound files and per-alert images
+- [x] Pre-flight: one toolbar checklist before going live (OBS, stream key, platforms, mics, headsets, disk, camera files, cameras, paused alerts), each problem linked to its fix (`docs/go-live.md`)
+
+What comes after: `ROADMAP.md`.
 
 Live-coded modules: chat overlay · featured message · transitions · sequencer · teleprompter · roast-o-meter · karaoke picker · hackathon voting · average-ness score · fake-money bets · chat-triggered sounds.

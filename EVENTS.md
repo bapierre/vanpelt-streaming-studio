@@ -91,7 +91,7 @@ type StreamDestination = { id: string; label: string; server: string /* rtmp(s):
 ```
 | type | payload |
 |---|---|
-| `destinations.list` | `{ destinations: StreamDestination[]; inObs: string \| null; detail?: string }` (retained; `inObs` is the destination OBS's main output uses, `detail` the last error) |
+| `destinations.list` | `{ destinations: StreamDestination[]; inObs: string \| null; obsKeySet?: boolean; detail?: string }` (retained; `inObs` is the destination OBS's main output uses, `obsKeySet` whether that output has any key, saved here or not (omitted until OBS has been asked), `detail` the last error) |
 | `destinations.cmd.save` | `StreamDestination` (insert or replace by id) |
 | `destinations.cmd.remove` | `{ id: string }` |
 | `destinations.cmd.useInObs` | `{ id: string }` (refused while OBS is streaming) |

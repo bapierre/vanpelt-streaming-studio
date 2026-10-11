@@ -36,7 +36,7 @@ This is the one place that tracks how far each feature got, what has not been ch
 ## Bus, OBS bridge and dashboard
 Milestones M0 and M1. Code: `apps/hub/src/{bus,ws,obs}`, `apps/dashboard`, `packages/overlay-sdk`.
 
-**Works:** one event bus mirrored over WebSocket on 127.0.0.1, topic subscriptions with retained state, chat history ring buffer, OBS scenes, sources, start and stop stream, status bar, and the Live, Sound, Chat and Settings tabs.
+**Works:** one event bus mirrored over WebSocket on 127.0.0.1, topic subscriptions with retained state, chat history ring buffer, OBS scenes, sources, start and stop stream, status bar, the Live, Sound, Chat and Settings tabs, and a pre-flight checklist in the toolbar.
 
 **Not verified:** the M1 done criterion, "one click goes live on all configured platforms", has not been run with a real OBS. All OBS tests use a mocked `obs-websocket-js`.
 
