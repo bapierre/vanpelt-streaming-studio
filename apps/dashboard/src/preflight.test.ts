@@ -96,7 +96,18 @@ describe('preflightChecks', () => {
   it('fails when OBS has no stream key, and says nothing until OBS has been asked', () => {
     const noKey = { ...ready(), destinations: { destinations: [], inObs: null, obsKeySet: false } };
     expect(problems(input({ state: noKey }))).toMatchObject([
-      { id: 'stream-key', status: 'fail', fix: { section: 'destinations' } },
+      { id: 'stream-key', status: 'fail', fix: { tab: 'settings', section: 'twitch', label: 'Add a stream key' } },
+    ]);
+    const savedElsewhere = {
+      ...ready(),
+      destinations: {
+        destinations: [{ id: 'restream', label: 'Restream', server: 'rtmp://x', key: 'k' }],
+        inObs: null,
+        obsKeySet: false,
+      },
+    };
+    expect(problems(input({ state: savedElsewhere }))).toMatchObject([
+      { id: 'stream-key', fix: { section: 'other', label: 'Add a stream key' } },
     ]);
     const unknown = { ...ready(), destinations: { destinations: [], inObs: null } };
     expect(preflightChecks(input({ state: unknown })).some((c) => c.id === 'stream-key')).toBe(false);

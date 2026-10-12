@@ -19,13 +19,15 @@ export type PreflightInput = {
 };
 
 const FIX = {
-  obs: { tab: 'settings', section: 'obs', label: 'OBS settings' },
-  keys: { tab: 'settings', section: 'destinations', label: 'Stream keys' },
-  platforms: { tab: 'settings', section: 'platforms', label: 'Platforms' },
-  cameras: { tab: 'settings', section: 'cameras', label: 'Cameras' },
-  alerts: { tab: 'onscreen', section: 'alerts', label: 'Alerts' },
-  sound: { tab: 'sound', label: 'Sound tab' },
+  obs: { tab: 'settings', section: 'obs', label: 'Open OBS settings' },
+  cameras: { tab: 'settings', section: 'cameras', label: 'Open Cameras' },
+  alerts: { tab: 'onscreen', section: 'alerts', label: 'Open Alerts' },
+  sound: { tab: 'sound', label: 'Open Sound' },
 } satisfies Record<string, Fix>;
+
+/** The Settings page that owns this stream key: the platform's page, or Other destinations. */
+const keyPage = (id: string | null | undefined) => (id && id in PLATFORMS ? id : id ? 'other' : 'twitch');
+const keyFix = (id: string | null | undefined, label: string): Fix => ({ tab: 'settings', section: keyPage(id), label });
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -56,19 +58,20 @@ export function preflightChecks({ state, audio, headsets, recording, cameras, al
 
 function streamKey(state: DashboardState, add: (c: Check) => void) {
   const { destinations, inObs, obsKeySet, detail } = state.destinations;
+  const saved = inObs ?? destinations[0]?.id ?? null;
   if (obsKeySet === false) {
     add({
       id: 'stream-key',
       status: 'fail',
       title: 'OBS has no stream key',
-      detail: 'Paste one under Stream keys and click Use in OBS, or set it in OBS → Settings → Stream.',
-      fix: FIX.keys,
+      detail: 'Save one on its platform page and click Use in OBS, or set it in OBS → Settings → Stream.',
+      fix: keyFix(saved, 'Add a stream key'),
     });
   } else if (obsKeySet) {
     const label = destinations.find((d) => d.id === inObs)?.label;
     add({ id: 'stream-key', status: 'ok', title: label ? `Streaming to ${label}` : 'OBS has a stream key' });
   }
-  if (detail) add({ id: 'stream-key-detail', status: 'warn', title: 'Stream keys', detail, fix: FIX.keys });
+  if (detail) add({ id: 'stream-key-detail', status: 'warn', title: 'Stream key', detail, fix: keyFix(saved, 'Open the stream key') });
 }
 
 function platforms(state: DashboardState, add: (c: Check) => void) {
@@ -77,25 +80,26 @@ function platforms(state: DashboardState, add: (c: Check) => void) {
   for (const [platform, c] of Object.entries(state.connections) as [Platform, DashboardState['connections'][Platform]][]) {
     if (!c) continue;
     const name = PLATFORMS[platform].label;
+    const fix: Fix = { tab: 'settings', section: platform, label: `Open ${name}` };
     if (c.state === 'connected') {
       const status = state.platforms[platform];
       if (status?.status === 'error') {
         problems++;
-        add({ id: `platform-${platform}`, status: 'warn', title: `${name} chat has a problem`, detail: status.detail, fix: FIX.platforms });
+        add({ id: `platform-${platform}`, status: 'warn', title: `${name} chat has a problem`, detail: status.detail, fix });
       } else {
         connected++;
         add({ id: `platform-${platform}`, status: 'ok', title: `${name} is connected` });
       }
     } else if (c.state === 'error') {
       problems++;
-      add({ id: `platform-${platform}`, status: 'warn', title: `${name} needs to reconnect`, detail: c.detail, fix: FIX.platforms });
+      add({ id: `platform-${platform}`, status: 'warn', title: `${name} needs to reconnect`, detail: c.detail, fix });
     } else if (c.state === 'pending') {
       problems++;
-      add({ id: `platform-${platform}`, status: 'warn', title: `${name} sign-in is not finished`, fix: FIX.platforms });
+      add({ id: `platform-${platform}`, status: 'warn', title: `${name} sign-in is not finished`, fix });
     }
   }
   if (connected === 0 && problems === 0) {
-    add({ id: 'platforms', status: 'warn', title: 'No platform is connected', detail: 'Chat and alerts will stay empty.', fix: FIX.platforms });
+    add({ id: 'platforms', status: 'warn', title: 'No platform is connected', detail: 'Chat and alerts will stay empty.', fix: { tab: 'settings', section: 'twitch', label: 'Connect a platform' } });
   }
 }
 

@@ -1,8 +1,74 @@
-/* Settings tab */
-.settings { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 0; }
-.settings-menu { background: var(--sidebar); border-right: 0.5px solid var(--separator); padding: 16px 10px; display: grid; gap: 2px; align-content: start; }
-.settings-menu .scene { position: relative; }
-.settings-menu .scene[aria-current='page'] { background: var(--accent); color: #fff; }
-.settings-menu .attention { position: static; }
-.settings-body { overflow-y: auto; padding: 28px 40px 40px; display: grid; gap: 14px; align-content: start; max-width: 960px; }
-.settings-body > h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+/* Settings tab. Loads after styles.css; overrides and extends it with the setup cards' looks. */
+
+/* Sidebar */
+.platform-logo.obs { width: 22px; height: 22px; background: #302e2e; border-radius: 6px; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18); }
+.obs-mark { font-size: 8px; font-weight: 800; letter-spacing: 0.02em; color: #fff; }
+
+/* Cards (Chat and alerts, Stream key, OBS connection) */
+.card-title { display: inline-flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 650; }
+.card-title .platform-logo { flex: none; }
+.card-body { display: grid; gap: 10px; padding: 12px 14px; align-items: start; }
+.card-account { font-weight: 600; }
+.card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.card-actions .spacer { flex: 1; }
+.panel-head .pill { flex: none; }
+
+/* A link that should read as a button (Open the console). */
+.settings a.button,
+.split-body a.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--fill);
+  color: var(--label);
+  text-decoration: none;
+  font-weight: 500;
+}
+.settings a.button:hover,
+.split-body a.button:hover { background: var(--fill-strong); }
+
+/* The one-time setup box */
+.setup-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--orange) 8%, var(--surface));
+  border: 0.5px solid color-mix(in srgb, var(--orange) 30%, transparent);
+}
+.setup-box h5 { margin: 0; font-size: 13px; }
+.setup-box ol { margin: 0; padding-left: 18px; color: var(--secondary); display: grid; gap: 3px; }
+.setup-box code { background: var(--fill); border-radius: 4px; padding: 0 4px; }
+.setup-actions { display: flex; gap: 8px; }
+.client-form { display: grid; gap: 10px; max-width: 480px; }
+
+/* Stream key rows */
+.key-rows { display: grid; gap: 8px; }
+.key-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.key-k { flex: 0 0 90px; font-weight: 500; }
+.key-v { overflow-wrap: anywhere; }
+.destination-form { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+.destination-form > :not(.field) { grid-column: 1 / -1; }
+.add-destination { padding: 12px 14px; }
+
+/* Setup overview */
+.setup-progress { display: flex; align-items: center; gap: 14px; }
+.setup-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--fill-strong); overflow: hidden; }
+.setup-bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s; }
+.setup-steps .setup-step { display: grid; grid-template-columns: 32px 1fr auto; gap: 14px; align-items: center; padding: 14px 18px; }
+.setup-steps .setup-step + .setup-step { border-top: 0.5px solid var(--separator); }
+.setup-steps .setup-step.next { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.setup-check { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; font-weight: 700; }
+.setup-check.done { background: var(--green); color: #fff; }
+.setup-check.todo { box-shadow: inset 0 0 0 1.5px var(--tertiary); color: var(--secondary); }
+.setup-check.next { background: var(--accent); color: #fff; }
+.setup-step-text h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.setup-step.done .setup-step-text h4 { color: var(--secondary); font-weight: 500; }
+.setup-step-text p { margin: 2px 0 0; color: var(--secondary); }
+.setup-step-action { flex: none; display: flex; align-items: center; justify-content: flex-end; }
+.setup-hint { font-size: 12px; color: var(--secondary); white-space: nowrap; }
+.setup-overlays { display: grid; gap: 8px; padding: 12px 18px 16px; border-top: 0.5px solid var(--separator); }

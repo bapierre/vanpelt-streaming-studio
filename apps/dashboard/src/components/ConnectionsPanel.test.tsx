@@ -1,20 +1,50 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConnectionsPanel } from './ConnectionsPanel';
+import { ConnectionCard, needsAttention, type ConnectionActions } from './ConnectionsPanel';
 
 afterEach(cleanup);
 
-const handlers = () => ({ onConnect: vi.fn(), onDisconnect: vi.fn(), onSetYoutubeClient: vi.fn(), onSetXClient: vi.fn() });
+const actions = (): ConnectionActions => ({
+  onConnect: vi.fn(),
+  onDisconnect: vi.fn(),
+  onSetTwitchClient: vi.fn(),
+  onSetYoutubeClient: vi.fn(),
+  onSetXClient: vi.fn(),
+});
+const card = (platform: 'twitch' | 'youtube' | 'x' | 'kick', state: object, extra: object = {}) =>
+  render(<ConnectionCard platform={platform} state={state as never} actions={actions()} {...extra} />);
 
-describe('ConnectionsPanel', () => {
+describe('ConnectionCard', () => {
+  it('marks an unconfigured platform Not set up and shows the one-time box instead of a Connect button', () => {
+    card('twitch', { platform: 'twitch', state: 'disconnected', clientConfigured: false });
+    expect(screen.getByText('Not set up')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
+    expect(screen.getByText('One-time step: give streamhub your Twitch app')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open Twitch console' }).getAttribute('href')).toBe('https://dev.twitch.tv/console');
+  });
+
+  it('saves a trimmed Twitch client id and connects once the hub confirms it is saved', async () => {
+    const h = actions();
+    const state = { platform: 'twitch' as const, state: 'disconnected' as const, clientConfigured: false };
+    const { rerender } = render(<ConnectionCard platform="twitch" state={state} actions={h} />);
+    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: ' cid ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and connect' }));
+    expect(h.onSetTwitchClient).toHaveBeenCalledWith('cid');
+    expect(h.onConnect).not.toHaveBeenCalled();
+    rerender(<ConnectionCard platform="twitch" state={{ ...state, clientConfigured: true, state: 'disconnected' }} actions={h} />);
+    expect(h.onConnect).toHaveBeenCalledWith();
+    rerender(<ConnectionCard platform="twitch" state={{ ...state, clientConfigured: true, state: 'pending', userCode: 'ABCDEFGH' }} actions={h} />);
+    await screen.findByText('ABCDEFGH');
+  });
+
   it('shows the Twitch code and activation link while pending', () => {
-    render(
-      <ConnectionsPanel
-        connections={{ twitch: { platform: 'twitch', state: 'pending', userCode: 'ABCDEFGH', verificationUri: 'https://www.twitch.tv/activate?public=true&device-code=ABCDEFGH' } }}
-        {...handlers()}
-      />,
-    );
+    card('twitch', {
+      platform: 'twitch',
+      state: 'pending',
+      userCode: 'ABCDEFGH',
+      verificationUri: 'https://www.twitch.tv/activate?public=true&device-code=ABCDEFGH',
+    });
     expect(screen.getByText('ABCDEFGH')).toBeTruthy();
     const link = screen.getByRole('link', { name: /twitch\.tv\/activate/ });
     expect(link.getAttribute('href')).toBe('https://www.twitch.tv/activate?public=true&device-code=ABCDEFGH');
@@ -22,22 +52,27 @@ describe('ConnectionsPanel', () => {
   });
 
   it('connects and disconnects Twitch', () => {
-    const h = handlers();
-    const { rerender } = render(<ConnectionsPanel connections={{ twitch: { platform: 'twitch', state: 'disconnected' } }} {...h} />);
-    fireEvent.click(within(screen.getByTestId('conn-twitch')).getByRole('button', { name: 'Connect' }));
-    expect(h.onConnect).toHaveBeenCalledWith('twitch');
-    rerender(<ConnectionsPanel connections={{ twitch: { platform: 'twitch', state: 'connected', account: 'yatf' } }} {...h} />);
-    expect(screen.getByText('yatf')).toBeTruthy();
-    fireEvent.click(within(screen.getByTestId('conn-twitch')).getByRole('button', { name: 'Disconnect' }));
-    expect(h.onDisconnect).toHaveBeenCalledWith('twitch');
+    const h = actions();
+    const { rerender } = render(
+      <ConnectionCard platform="twitch" state={{ platform: 'twitch', state: 'disconnected', clientConfigured: true }} actions={h} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(h.onConnect).toHaveBeenCalledWith();
+    rerender(<ConnectionCard platform="twitch" state={{ platform: 'twitch', state: 'connected', account: 'yatf' }} actions={h} />);
+    expect(screen.getByText('Signed in as yatf')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(h.onDisconnect).toHaveBeenCalledWith();
   });
 
   it('asks for the YouTube client, submits trimmed values and clears the secret field', () => {
-    const h = handlers();
-    render(<ConnectionsPanel connections={{ youtube: { platform: 'youtube', state: 'disconnected', clientConfigured: false } }} {...h} />);
+    const h = actions();
+    render(
+      <ConnectionCard platform="youtube" state={{ platform: 'youtube', state: 'disconnected', clientConfigured: false }} actions={h} />,
+    );
     const id = screen.getByLabelText('Client ID') as HTMLInputElement;
     const secret = screen.getByLabelText('Client secret') as HTMLInputElement;
     expect(secret.type).toBe('password');
+    expect(secret.getAttribute('autocomplete')).toBe('new-password');
     fireEvent.change(id, { target: { value: ' cid ' } });
     fireEvent.change(secret, { target: { value: ' s3 ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save client' }));
@@ -47,96 +82,94 @@ describe('ConnectionsPanel', () => {
 
   it('links the Google sign-in only when it is https', () => {
     const { rerender } = render(
-      <ConnectionsPanel connections={{ youtube: { platform: 'youtube', state: 'pending', clientConfigured: true, authUrl: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' } }} {...handlers()} />,
+      <ConnectionCard
+        platform="youtube"
+        state={{ platform: 'youtube', state: 'pending', clientConfigured: true, authUrl: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' }}
+        actions={actions()}
+      />,
     );
-    expect(screen.getByRole('link', { name: 'Continue to Google sign-in' }).getAttribute('href')).toBe('https://accounts.google.com/o/oauth2/v2/auth?x=1');
+    expect(screen.getByRole('link', { name: 'Continue to Google sign-in' }).getAttribute('href')).toBe(
+      'https://accounts.google.com/o/oauth2/v2/auth?x=1',
+    );
     rerender(
-      <ConnectionsPanel connections={{ youtube: { platform: 'youtube', state: 'pending', clientConfigured: true, authUrl: 'javascript:alert(1)' } }} {...handlers()} />,
+      <ConnectionCard
+        platform="youtube"
+        state={{ platform: 'youtube', state: 'pending', clientConfigured: true, authUrl: 'javascript:alert(1)' }}
+        actions={actions()}
+      />,
     );
     expect(screen.queryByRole('link', { name: 'Continue to Google sign-in' })).toBeNull();
   });
 
-  it('shows errors and the YouTube policy links', () => {
-    render(<ConnectionsPanel connections={{ youtube: { platform: 'youtube', state: 'error', detail: 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.' } }} {...handlers()} />);
+  it('keeps the YouTube policy links beside the connect flow', () => {
+    card('youtube', { platform: 'youtube', state: 'error', clientConfigured: true, detail: 'YouTube sign-in expired. Reconnect it.' });
     expect(screen.getByText(/sign-in expired/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'YouTube Terms of Service' }).getAttribute('href')).toBe('https://www.youtube.com/t/terms');
     expect(screen.getByRole('link', { name: 'Google Privacy Policy' }).getAttribute('href')).toBe('https://policies.google.com/privacy');
   });
 
-  it('offers Connect on a row whose auth was lost', () => {
-    const h = handlers();
-    render(
-      <ConnectionsPanel
-        connections={{
-          twitch: { platform: 'twitch', state: 'error', detail: 'Twitch login expired. Reconnect Twitch in Settings → Platforms.' },
-          youtube: { platform: 'youtube', state: 'error', clientConfigured: true, detail: 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.' },
-        }}
-        {...h}
-      />,
+  it('offers Connect on a card whose auth was lost, and asks for the X client id first', () => {
+    const h = actions();
+    const { rerender } = render(
+      <ConnectionCard platform="x" state={{ platform: 'x', state: 'error', clientConfigured: true, detail: 'X sign-in expired. Reconnect it.' }} actions={h} />,
     );
-    for (const platform of ['twitch', 'youtube'] as const) {
-      const row = within(screen.getByTestId(`conn-${platform}`));
-      expect(row.getByText(/Reconnect/)).toBeTruthy();
-      const button = row.getByRole('button', { name: 'Connect' });
-      expect(button).toHaveProperty('disabled', false);
-      fireEvent.click(button);
-      expect(h.onConnect).toHaveBeenCalledWith(platform);
-    }
-  });
-
-  it('marks Kick as coming later', () => {
-    render(<ConnectionsPanel connections={{ kick: { platform: 'kick', state: 'disconnected', detail: 'Kick arrives with the relay (M3).' } }} {...handlers()} />);
-    expect(within(screen.getByTestId('conn-kick')).getByRole('button', { name: 'Connect' })).toHaveProperty('disabled', true);
-  });
-
-  it('lets a pending connection be started again', () => {
-    const h = handlers();
-    render(
-      <ConnectionsPanel
-        connections={{
-          twitch: { platform: 'twitch', state: 'pending', userCode: 'ABCDEFGH' },
-          youtube: { platform: 'youtube', state: 'pending', clientConfigured: true },
-        }}
-        {...h}
-      />,
-    );
-    for (const platform of ['twitch', 'youtube'] as const) {
-      const button = within(screen.getByTestId(`conn-${platform}`)).getByRole('button', { name: 'Start again' });
-      expect(button).toHaveProperty('disabled', false);
-      fireEvent.click(button);
-      expect(h.onConnect).toHaveBeenCalledWith(platform);
-    }
-  });
-
-  it('asks for the X client id, then links the X sign-in', () => {
-    const h = handlers();
-    const { rerender } = render(<ConnectionsPanel connections={{ x: { platform: 'x', state: 'disconnected', clientConfigured: false } }} {...h} />);
-    const row = within(screen.getByTestId('conn-x'));
-    fireEvent.change(row.getByLabelText('OAuth 2.0 Client ID'), { target: { value: ' xid ' } });
-    fireEvent.click(row.getByRole('button', { name: 'Save client' }));
+    expect(screen.getByText('Error')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(h.onConnect).toHaveBeenCalledWith();
+    rerender(<ConnectionCard platform="x" state={{ platform: 'x', state: 'disconnected', clientConfigured: false }} actions={h} />);
+    fireEvent.change(screen.getByLabelText('OAuth 2.0 Client ID'), { target: { value: ' xid ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save client' }));
     expect(h.onSetXClient).toHaveBeenCalledWith('xid');
-    rerender(
-      <ConnectionsPanel connections={{ x: { platform: 'x', state: 'pending', clientConfigured: true, authUrl: 'https://x.com/i/oauth2/authorize?a=1' } }} {...h} />,
-    );
+  });
+
+  it('links the X sign-in once a client exists', () => {
+    card('x', { platform: 'x', state: 'pending', clientConfigured: true, authUrl: 'https://x.com/i/oauth2/authorize?a=1' });
     expect(screen.getByRole('link', { name: 'Continue to X sign-in' }).getAttribute('href')).toBe('https://x.com/i/oauth2/authorize?a=1');
   });
 
-  it('shows the X livestream state once connected', () => {
+  it('explains what X reports once connected', () => {
     render(
-      <ConnectionsPanel
-        connections={{ x: { platform: 'x', state: 'connected', clientConfigured: true, account: '@yatf' } }}
-        live={{ x: { platform: 'x', ingest: 'active', broadcast: 'running', viewers: 1200 } }}
-        {...handlers()}
+      <ConnectionCard
+        platform="x"
+        state={{ platform: 'x', state: 'connected', clientConfigured: true, account: '@yatf' }}
+        live={{ platform: 'x', ingest: 'active', broadcast: 'running', viewers: 1200 }}
+        actions={actions()}
       />,
     );
-    const row = within(screen.getByTestId('conn-x'));
-    expect(row.getByText('@yatf')).toBeTruthy();
-    expect(row.getByText(/Live · 1\.2K watching/)).toBeTruthy();
-    expect(row.getByText(/Receiving video/)).toBeTruthy();
+    expect(screen.getByText('Signed in as @yatf')).toBeTruthy();
+    expect(screen.getByText(/Live · 1\.2K watching/)).toBeTruthy();
+    expect(screen.getByText(/Receiving video/)).toBeTruthy();
+    expect(screen.getByText('Livestream status')).toBeTruthy();
   });
 
-  it('keeps the client secret out of browser password saving', () => {
-    render(<ConnectionsPanel connections={{ youtube: { platform: 'youtube', state: 'disconnected', clientConfigured: false } }} {...handlers()} />);
-    expect(screen.getByLabelText('Client secret').getAttribute('autocomplete')).toBe('new-password');
+  it('marks Kick as coming later, with no connect button', () => {
+    card('kick', { platform: 'kick', state: 'disconnected', detail: 'Kick arrives with the relay (M3).' });
+    expect(screen.getByText('Coming later')).toBeTruthy();
+    expect(screen.getByText(/Until then, save the stream key below/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
+  });
+
+  it('lets a pending connection be started again', () => {
+    const h = actions();
+    render(
+      <ConnectionCard
+        platform="twitch"
+        state={{ platform: 'twitch', state: 'pending', userCode: 'ABCDEFGH', clientConfigured: true }}
+        actions={h}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Start again' }));
+    expect(h.onConnect).toHaveBeenCalledWith();
+  });
+});
+
+describe('needsAttention', () => {
+  it('flags error, pending and unconfigured platforms, not a plain disconnect', () => {
+    expect(needsAttention({ platform: 'twitch', state: 'error' })).toBe(true);
+    expect(needsAttention({ platform: 'twitch', state: 'pending' })).toBe(true);
+    expect(needsAttention({ platform: 'twitch', state: 'disconnected', clientConfigured: false })).toBe(true);
+    expect(needsAttention({ platform: 'twitch', state: 'disconnected', clientConfigured: true })).toBe(false);
+    expect(needsAttention({ platform: 'kick', state: 'disconnected', detail: 'M3' })).toBe(false);
+    expect(needsAttention(undefined)).toBe(false);
   });
 });

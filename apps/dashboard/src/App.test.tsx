@@ -57,7 +57,7 @@ describe('App', () => {
     render(<App client={quietHub()} />);
     expect(screen.getByRole('region', { name: 'Chat' })).toBeTruthy();
     fireEvent.keyDown(window, { key: ',', metaKey: true });
-    expect(screen.getByRole('region', { name: 'General' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Setup overview' })).toBeTruthy();
     fireEvent.keyDown(window, { key: '2', metaKey: true });
     expect(screen.getByText(/Waiting for the hub/)).toBeTruthy();
     fireEvent.keyDown(window, { key: '3', metaKey: true });
@@ -91,12 +91,12 @@ describe('App', () => {
   it('takes a pre-flight fix straight to the right page, and forgets it after', () => {
     render(<App client={hubWith([event('obs.connection', { connected: false })])} />);
     fireEvent.click(screen.getByRole('button', { name: /^Pre-flight: \d+ problem/ }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'OBS settings' }).at(-1)!);
+    fireEvent.click(screen.getByRole('button', { name: 'Open OBS settings' }));
     expect(screen.getByRole('tabpanel').id).toBe('panel-settings');
     expect(screen.getByRole('region', { name: 'OBS' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: /^Live/ }));
     fireEvent.click(screen.getByRole('tab', { name: /^Settings/ }));
-    expect(screen.getByRole('region', { name: 'General' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Setup overview' })).toBeTruthy();
   });
 });

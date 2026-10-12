@@ -8,8 +8,8 @@ afterEach(cleanup);
 
 const checks: Check[] = [
   { id: 'obs', status: 'ok', title: 'OBS is connected' },
-  { id: 'mic-guest', status: 'warn', title: 'Guest is muted', fix: { tab: 'sound', label: 'Sound tab' } },
-  { id: 'stream-key', status: 'fail', title: 'OBS has no stream key', detail: 'Paste one under Stream keys.', fix: { tab: 'settings', section: 'destinations', label: 'Stream keys' } },
+  { id: 'mic-guest', status: 'warn', title: 'Guest is muted', fix: { tab: 'sound', label: 'Open Sound' } },
+  { id: 'stream-key', status: 'fail', title: 'OBS has no stream key', detail: 'Save one on its platform page and click Use in OBS.', fix: { tab: 'settings', section: 'twitch', label: 'Add a stream key' } },
 ];
 
 const open = () => fireEvent.click(screen.getByRole('button', { name: /^Pre-flight/ }));
@@ -29,8 +29,8 @@ describe('Preflight', () => {
     open();
     const items = within(screen.getByRole('region', { name: 'Pre-flight checks' })).getAllByRole('listitem');
     expect(items.map((li) => li.textContent)).toEqual([
-      '×Problem: OBS has no stream keyPaste one under Stream keys.Stream keys',
-      '!Check: Guest is mutedSound tab',
+      '×Problem: OBS has no stream keySave one on its platform page and click Use in OBS.Add a stream key',
+      '!Check: Guest is mutedOpen Sound',
       '✓OK: OBS is connected',
     ]);
   });
@@ -39,8 +39,8 @@ describe('Preflight', () => {
     const onFix = vi.fn();
     render(<Preflight checks={checks} onFix={onFix} />);
     open();
-    fireEvent.click(screen.getByRole('button', { name: 'Stream keys' }));
-    expect(onFix).toHaveBeenCalledWith({ tab: 'settings', section: 'destinations', label: 'Stream keys' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add a stream key' }));
+    expect(onFix).toHaveBeenCalledWith({ tab: 'settings', section: 'twitch', label: 'Add a stream key' });
     expect(screen.queryByRole('region', { name: 'Pre-flight checks' })).toBeNull();
   });
 
