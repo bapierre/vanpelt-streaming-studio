@@ -1,5 +1,6 @@
 import type { PlatformLive } from '@streamhub/shared';
-import { PLATFORMS, platformColor } from '../platforms';
+import { PLATFORMS } from '../platforms';
+import { PlatformLogo } from './ui';
 
 const BROADCAST: Record<PlatformLive['broadcast'], string> = {
   none: 'No broadcast',
@@ -26,13 +27,20 @@ export function describeLive(live: PlatformLive): string {
 export function PlatformLiveBadge({ live }: { live: PlatformLive }) {
   const { label } = PLATFORMS[live.platform];
   const title = [`${label}: ${describeLive(live)}`, INGEST[live.ingest], live.title, live.detail].filter(Boolean).join('\n');
+  const short =
+    live.broadcast === 'running'
+      ? live.viewers !== undefined
+        ? viewerCount.format(live.viewers)
+        : 'Live'
+      : BROADCAST[live.broadcast];
   return (
-    <span className={`live-badge ${live.broadcast}`} style={platformColor(live.platform)} title={title} data-testid={`live-${live.platform}`}>
-      <span className="platform-tile mini" aria-hidden>
-        {label[0]}
-      </span>
+    <span className={`live-badge ${live.broadcast}`} title={title} data-testid={`live-${live.platform}`}>
+      <PlatformLogo platform={live.platform} size={20} />
       <span className={`ingest-dot ${live.ingest}`} aria-label={INGEST[live.ingest]} />
-      <span>{describeLive(live)}</span>
+      <span>
+        {short}
+        <span className="sr-only">{live.broadcast === 'running' && live.viewers !== undefined ? ' watching' : ''}</span>
+      </span>
     </span>
   );
 }

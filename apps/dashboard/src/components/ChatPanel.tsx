@@ -3,6 +3,7 @@ import type { ChatMessage, Platform } from '@streamhub/shared';
 import type { ChatSize } from '../prefs';
 import { CHAT_PLATFORMS, PLATFORMS, platformColor } from '../platforms';
 import { safeHttpsUrl } from '../safeUrl';
+import { Icon } from './Icon';
 
 type Props = {
   messages: ChatMessage[];
@@ -14,6 +15,8 @@ type Props = {
   size?: ChatSize;
   /** Only messages whose text or author contains this (any case). */
   query?: string;
+  /** Shows a "Pop out" button that moves chat into its own window. */
+  onPopOut?: () => void;
 };
 
 /** Normalize once per keystroke, not once per message per render. */
@@ -97,6 +100,7 @@ export const ChatPanel = memo(function ChatPanel({
   compact = false,
   size = 'medium',
   query = '',
+  onPopOut,
 }: Props) {
   const [hidden, setHidden] = useState<Set<Platform>>(new Set());
   // null while following the latest message; otherwise the id of the last
@@ -150,6 +154,12 @@ export const ChatPanel = memo(function ChatPanel({
               </button>
             ))}
           </div>
+        )}
+        {onPopOut && (
+          <button className="sm" title="Open chat in its own window" onClick={onPopOut}>
+            <Icon name="popout" />
+            Pop out
+          </button>
         )}
       </div>
       {visible.length === 0 && (

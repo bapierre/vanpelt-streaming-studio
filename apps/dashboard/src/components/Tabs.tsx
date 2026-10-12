@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { initialTab, rememberTab, TAB_IDS, type Prefs, type TabId } from '../prefs';
 
-export const TAB_LABELS: Record<TabId, string> = { live: 'Live', sound: 'Sound', chat: 'Chat', settings: 'Settings' };
+export const TAB_LABELS: Record<TabId, string> = { live: 'Live', sound: 'Sound', onscreen: 'On screen', settings: 'Settings' };
 
 export const tabId = (tab: TabId) => `tab-${tab}`;
 export const panelId = (tab: TabId) => `panel-${tab}`;

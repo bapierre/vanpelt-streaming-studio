@@ -1,15 +1,10 @@
 import { formatUptime, type DashboardState } from '../state';
 import { useConfirm } from '../useConfirm';
-import { useNow } from './StatusBar';
+import { useNow } from '../useNow';
 
-function OnAir({ stream }: { stream: DashboardState['stream'] }) {
+function Uptime({ startedAt }: { startedAt: number }) {
   const now = useNow(1000);
-  if (stream.state !== 'live') return <span className="on-air off">{stream.state === 'stopped' ? 'Off air' : stream.state}</span>;
-  return (
-    <span className="on-air">
-      Live{stream.startedAt !== undefined && <span className="uptime">{formatUptime(now - stream.startedAt)}</span>}
-    </span>
-  );
+  return <span className="uptime">{formatUptime(now - startedAt)}</span>;
 }
 
 type Props = {
@@ -39,27 +34,36 @@ export function StreamControls({
   const changing = stream.state === 'starting' || stream.state === 'stopping';
   const label = armed
     ? live
-      ? 'Click again to STOP stream'
+      ? 'Click again to END stream'
       : problems > 0
         ? 'Click again to GO LIVE anyway'
         : 'Click again to GO LIVE'
-    : live
-      ? 'Stop stream'
-      : 'Start stream';
+    : stream.state === 'starting'
+      ? 'Starting…'
+      : stream.state === 'stopping'
+        ? 'Ending…'
+        : live
+          ? 'End stream'
+          : 'Go live';
 
-  const onClick = () => click(live ? onStop : onStart);
+  const button = (
+    <button
+      className={`go-live${armed ? ' armed' : ''}`}
+      disabled={disabled || changing}
+      title={!live && problems > 0 ? `Pre-flight found ${problems} problem${problems === 1 ? '' : 's'}` : undefined}
+      onClick={() => click(live ? onStop : onStart)}
+    >
+      {label}
+    </button>
+  );
 
+  // While OBS is unreachable its last stream state may be stale, so never claim to be on air.
+  if (disabled || !live) return <div className="stream-controls">{button}</div>;
   return (
-    <div className="stream-controls">
-      {!disabled && <OnAir stream={stream} />}
-      <button
-        className={`go-live ${live ? 'danger' : 'primary'}${armed ? ' armed' : ''}`}
-        disabled={disabled || changing}
-        title={!live && problems > 0 ? `Pre-flight found ${problems} problem${problems === 1 ? '' : 's'}` : undefined}
-        onClick={onClick}
-      >
-        {label}
-      </button>
+    <div className="stream-controls on-air" role="group" aria-label="On air">
+      <span className="on-air-label">On air</span>
+      {stream.state === 'live' && stream.startedAt !== undefined && <Uptime startedAt={stream.startedAt} />}
+      {button}
     </div>
   );
 }

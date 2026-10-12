@@ -1,0 +1,6 @@
+/* Live tab */
+.live { display: grid; grid-template-columns: 300px minmax(260px, 1fr) minmax(300px, 400px); gap: 14px; padding: 14px; min-height: 0; }
+.live.chat-out { grid-template-columns: 300px minmax(260px, 1fr) 240px; }
+.live-col { display: grid; gap: 14px; align-content: start; min-height: 0; overflow-y: auto; }
+.live-chat { min-height: 0; display: flex; }
+.live-chat-out { align-self: start; }

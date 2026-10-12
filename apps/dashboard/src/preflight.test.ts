@@ -77,7 +77,7 @@ describe('preflightChecks', () => {
       ['ok', '1 mic ready'],
       ['ok', '200 GB free for recording'],
     ]);
-    expect(summarize(checks)).toEqual({ level: 'ok', fails: 0, warns: 0, label: 'Ready' });
+    expect(summarize(checks)).toEqual({ level: 'ok', fails: 0, warns: 0, label: 'All good' });
   });
 
   it('only reports the hub when the dashboard cannot reach it', () => {

@@ -1,269 +1,88 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { HubClient } from '@streamhub/overlay-sdk';
-import type { ChatMessage } from '@streamhub/shared';
-import { AlertsPanel, type AlertActions } from './components/AlertsPanel';
-import { Mixer, type AudioActions } from './components/AudioPanel';
-import { CamerasPanel, CameraSwitcher } from './components/CamerasPanel';
-import { ChatPanel } from './components/ChatPanel';
-import { ChatTab } from './components/ChatTab';
-import { ConnectionsPanel } from './components/ConnectionsPanel';
-import { DestinationsPanel } from './components/DestinationsPanel';
-import { GoalsPanel, type GoalActions } from './components/GoalsPanel';
-import type { HeadsetActions } from './components/HeadsetMatrix';
-import { ObsSettings, ObsTools } from './components/Obs';
 import { PlatformLiveBadge } from './components/PlatformLive';
 import { Preflight } from './components/Preflight';
 import { RecordControls } from './components/RecordControls';
-import { RecordingPanel } from './components/RecordingPanel';
-import { ScenePanel } from './components/ScenePanel';
-import { GeneralSettings, SettingsTab } from './components/SettingsTab';
 import { SoundTab } from './components/SoundTab';
-import { SourcesPanel } from './components/SourcesPanel';
-import { StatusBar } from './components/StatusBar';
 import { StreamControls } from './components/StreamControls';
 import { panelId, tabId, TabBar, useTabs } from './components/Tabs';
-import { createLevelsStore } from './levels';
-import { preflightChecks, summarize, type Fix } from './preflight';
+import { summarize, type Fix } from './preflight';
 import { usePrefs } from './prefs';
-import { useAlerts } from './useAlerts';
-import { useAudio } from './useAudio';
-import { useCameras } from './useCameras';
-import { useDashboardState } from './useDashboardState';
-import { useHeadsets } from './useHeadsets';
-import { useRecording } from './useRecording';
+import { diskWarning } from './recording';
+import { LiveTab } from './tabs/Live';
+import { OnScreenTab } from './tabs/OnScreen';
+import { SettingsArea } from './tabs/Settings';
+import { useStudio, type Studio } from './useStudio';
+
+/** Says plainly what is offline, right under the toolbar, with the way to fix it. */
+function ConnectionBanner({ studio, onObsSettings }: { studio: Studio; onObsSettings: () => void }) {
+  const { state, client } = studio;
+  if (!state.hubConnected)
+    return (
+      <div className="banner bad" role="status">
+        <span className="dot" aria-hidden />
+        <span className="banner-text">Lost the connection to the streamhub hub. Reconnecting…</span>
+      </div>
+    );
+  if (state.obs.connected) return null;
+  return (
+    <div className="banner warn" role="status">
+      <span className="dot" aria-hidden />
+      <span className="banner-text">
+        <strong>OBS is not connected.</strong> Scenes, mics and Go live come back when it is.
+        {state.obs.detail && <span className="banner-detail"> ({state.obs.detail})</span>}
+      </span>
+      <button className="sm" onClick={() => client.publish('obs.cmd.reconnect')}>
+        Reconnect
+      </button>
+      <button className="sm ghost" onClick={onObsSettings}>
+        OBS settings
+      </button>
+    </div>
+  );
+}
 
 export function App({ client }: { client: HubClient }) {
   const [prefs, setPrefs] = usePrefs();
   const [tab, setTab] = useTabs(prefs);
-  const state = useDashboardState(client);
-  const cameras = useCameras(client);
-  const recording = useRecording(client);
-  const headsets = useHeadsets(client);
-  const alerts = useAlerts(client);
-  const takeCamera = useCallback((id: string) => client.publish('camera.cmd.take', { id }), [client]);
-  const audio = useAudio(client);
-  // Meter levels live outside React state so their 15 Hz tick only re-renders meters.
-  const levels = useMemo(() => createLevelsStore(client), [client]);
-  const audioActions = useMemo<AudioActions>(
-    () => ({
-      onSet: (patch) => client.publish('audio.cmd.set', patch),
-      onSoundcheck: (id, action) => client.publish('audio.cmd.soundcheck', { id, action }),
-      onTarget: (targetDb) => client.publish('audio.cmd.setTarget', { targetDb }),
-      onAdd: (add) => client.publish('audio.cmd.add', add),
-      onRemove: (id) => client.publish('audio.cmd.remove', { id }),
-      onNest: () => client.publish('audio.cmd.nest', {}),
-      onListDevices: () => client.publish('audio.cmd.listDevices'),
-    }),
-    [client],
-  );
-  const headsetActions = useMemo<HeadsetActions>(
-    () => ({
-      onAdd: (add) => client.publish('headsets.cmd.add', add),
-      onUpdate: (patch) => client.publish('headsets.cmd.update', patch),
-      onRemove: (id) => client.publish('headsets.cmd.remove', { id }),
-      onSetSend: (patch) => client.publish('headsets.cmd.setSend', patch),
-      onSetStream: (patch) => client.publish('headsets.cmd.setStream', patch),
-      onRenameSource: (patch) => client.publish('headsets.cmd.renameSource', patch),
-      onListOutputs: () => client.publish('headsets.cmd.listOutputs'),
-    }),
-    [client],
-  );
-  const alertActions = useMemo<AlertActions>(
-    () => ({
-      onTest: (kind) => client.publish('alert.cmd.test', { kind }),
-      onReplay: (id) => client.publish('alert.cmd.replay', { id }),
-      onSkip: () => client.publish('alert.cmd.skip', {}),
-      onPause: (paused) => client.publish('alert.cmd.pause', { paused }),
-      onSetKind: (patch) => client.publish('alert.cmd.setKind', patch),
-    }),
-    [client],
-  );
-  const goalActions = useMemo<GoalActions>(
-    () => ({
-      onSave: (goal) => client.publish('goal.cmd.save', goal),
-      onRemove: (id) => client.publish('goal.cmd.remove', { id }),
-      onReset: (id) => client.publish('goal.cmd.reset', { id }),
-    }),
-    [client],
-  );
-  const obsReady = state.hubConnected && state.obs.connected;
-  const live = state.stream.state !== 'stopped';
+  const studio = useStudio(client);
+  const { state, recording, checks, obsReady } = studio;
   const platformsNeedAttention = Object.values(state.connections).some((c) => c?.state === 'error');
   const platformLive = Object.values(state.live).filter((l) => l && state.connections[l.platform]?.state === 'connected');
-  const checks = useMemo(
-    () => preflightChecks({ state, audio: audio.state, headsets, recording, cameras, alerts: alerts.config }),
-    [state, audio.state, headsets, recording, cameras, alerts.config],
-  );
-  // A pre-flight Fix can open a given Settings section; any other way into Settings starts fresh.
-  const [settingsAt, setSettingsAt] = useState<string>();
+  const disk = state.obs.connected ? diskWarning(recording) : null;
+
+  // A pre-flight Fix can open a given page; any other way into a tab starts on its default page.
+  const [target, setTarget] = useState<Pick<Fix, 'tab' | 'section'>>();
   useEffect(() => {
-    if (tab !== 'settings') setSettingsAt(undefined);
-  }, [tab]);
-  const onFix = (fix: Fix) => {
-    setSettingsAt(fix.section);
+    if (target && target.tab !== tab) setTarget(undefined);
+  }, [tab, target]);
+  const pageAt = target?.tab === tab ? target.section : undefined;
+  const go = (fix: Pick<Fix, 'tab' | 'section'>) => {
+    setTarget(fix);
     setTab(fix.tab);
   };
-  const onFeature = useCallback((message: ChatMessage) => client.publish('show.feature.set', { message }), [client]);
-  const onClearFeature = useCallback(() => client.publish('show.feature.clear'), [client]);
 
   const panel = () => {
     switch (tab) {
       case 'live':
-        return (
-          <div className="live">
-            <aside className="sidebar">
-              <CameraSwitcher cameras={cameras} disabled={!obsReady} onTake={takeCamera} />
-              <ScenePanel
-                scenes={state.scenes}
-                current={state.currentScene}
-                disabled={!obsReady}
-                onSelect={(scene) => client.publish('obs.cmd.setScene', { scene })}
-              />
-              <SourcesPanel
-                sources={state.sources}
-                disabled={!obsReady}
-                onToggle={(scene, source, visible) => client.publish('obs.cmd.setSourceVisible', { scene, source, visible })}
-              />
-              <RecordingPanel recording={recording} />
-            </aside>
-            <section className="live-mixer" aria-label="Mixer">
-              {audio.state && audio.state.mics.length > 0 ? (
-                <Mixer mics={audio.state.mics} levels={levels} disabled={!obsReady} onSet={audioActions.onSet} />
-              ) : (
-                <p className="side-empty small">No mics yet. Add them in the Sound tab.</p>
-              )}
-            </section>
-            <div className="live-chat">
-              <ChatPanel
-                compact
-                size={prefs.chatSize}
-                messages={state.chat}
-                featuredId={state.featuredId}
-                onFeature={onFeature}
-                onClearFeature={onClearFeature}
-              />
-            </div>
-          </div>
-        );
+        return <LiveTab studio={studio} prefs={prefs} />;
       case 'sound':
         return (
           <SoundTab
-            state={audio.state}
-            devices={audio.devices}
-            levels={levels}
-            headsets={headsets}
+            state={studio.audio.state}
+            devices={studio.audio.devices}
+            levels={studio.levels}
+            headsets={studio.headsets}
             disabled={!obsReady}
             hubConnected={state.hubConnected}
-            actions={audioActions}
-            headsetActions={headsetActions}
+            actions={studio.audioActions}
+            headsetActions={studio.headsetActions}
           />
         );
-      case 'chat':
-        return (
-          <ChatTab
-            messages={state.chat}
-            featuredId={state.featuredId}
-            size={prefs.chatSize}
-            onFeature={onFeature}
-            onClearFeature={onClearFeature}
-          />
-        );
+      case 'onscreen':
+        return <OnScreenTab key={pageAt} studio={studio} initial={pageAt} />;
       case 'settings':
-        return (
-          <SettingsTab
-            key={settingsAt}
-            initial={settingsAt ?? (platformsNeedAttention ? 'platforms' : 'general')}
-            sections={[
-              {
-                id: 'general',
-                label: 'General',
-                content: (
-                  <GeneralSettings
-                    targetDb={audio.state?.targetDb ?? null}
-                    disabled={!state.hubConnected}
-                    prefs={prefs}
-                    onTarget={audioActions.onTarget}
-                    onPrefs={setPrefs}
-                  />
-                ),
-              },
-              {
-                id: 'obs',
-                label: 'OBS',
-                content: (
-                  <ObsSettings
-                    obs={state.obs}
-                    settings={state.obsSettings}
-                    onSave={(url, password) => client.publish('connections.cmd.setObs', password === undefined ? { url } : { url, password })}
-                    onReconnect={() => client.publish('obs.cmd.reconnect')}
-                  />
-                ),
-              },
-              {
-                id: 'platforms',
-                label: 'Platforms',
-                attention: platformsNeedAttention,
-                content: (
-                  <ConnectionsPanel
-                    connections={state.connections}
-                    live={state.live}
-                    onConnect={(platform) => client.publish('connections.cmd.connect', { platform })}
-                    onDisconnect={(platform) => client.publish('connections.cmd.disconnect', { platform })}
-                    onSetYoutubeClient={(clientId, clientSecret) => client.publish('connections.cmd.setYoutubeClient', { clientId, clientSecret })}
-                    onSetXClient={(clientId) => client.publish('connections.cmd.setXClient', { clientId })}
-                  />
-                ),
-              },
-              {
-                id: 'alerts',
-                label: 'Alerts',
-                content: (
-                  <AlertsPanel
-                    config={alerts.config}
-                    recent={alerts.recent}
-                    modules={alerts.modules}
-                    twitchDetail={state.platforms.twitch?.detail}
-                    disabled={!state.hubConnected}
-                    actions={alertActions}
-                  />
-                ),
-              },
-              {
-                id: 'goals',
-                label: 'Goals',
-                content: (
-                  <GoalsPanel goals={alerts.goals?.goals ?? null} modules={alerts.modules} disabled={!state.hubConnected} actions={goalActions} />
-                ),
-              },
-              {
-                id: 'cameras',
-                label: 'Cameras',
-                content: (
-                  <CamerasPanel
-                    cameras={cameras}
-                    disabled={!state.hubConnected}
-                    onTake={takeCamera}
-                    onSet={(id, key, value) => client.publish('camera.cmd.set', { id, key, value })}
-                  />
-                ),
-              },
-              {
-                id: 'destinations',
-                label: 'Stream keys',
-                content: (
-                  <DestinationsPanel
-                    list={state.destinations}
-                    obsReady={obsReady}
-                    live={live}
-                    onSave={(d) => client.publish('destinations.cmd.save', d)}
-                    onRemove={(id) => client.publish('destinations.cmd.remove', { id })}
-                    onUseInObs={(id) => client.publish('destinations.cmd.useInObs', { id })}
-                  />
-                ),
-              },
-            ]}
-          />
-        );
+        return <SettingsArea key={pageAt} studio={studio} initial={pageAt} prefs={prefs} onPrefs={setPrefs} />;
     }
   };
 
@@ -271,16 +90,15 @@ export function App({ client }: { client: HubClient }) {
     <div className="app">
       <header className="toolbar" data-tauri-drag-region="deep">
         <h1 className="brand">streamhub</h1>
-        <ObsTools
-          obs={state.obs}
-          hubConnected={state.hubConnected}
-          onRefresh={() => client.publish('obs.cmd.refresh')}
-          onReconnect={() => client.publish('obs.cmd.reconnect')}
-        />
         <TabBar tab={tab} onSelect={setTab} attention={platformsNeedAttention ? ['settings'] : []} />
         <span className="spacer" />
         {platformLive.map((l) => l && <PlatformLiveBadge key={l.platform} live={l} />)}
-        <Preflight checks={checks} onFix={onFix} />
+        {disk && (
+          <span className={`disk-chip ${recording?.disk?.level ?? ''}`} role="alert">
+            {disk}
+          </span>
+        )}
+        <Preflight checks={checks} onFix={go} />
         <RecordControls
           recording={recording}
           disabled={!obsReady}
@@ -295,10 +113,10 @@ export function App({ client }: { client: HubClient }) {
           onStop={() => client.publish('obs.cmd.stopStream')}
         />
       </header>
+      <ConnectionBanner studio={studio} onObsSettings={() => go({ tab: 'settings', section: 'obs' })} />
       <main className={`workspace tab-${tab}`} role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)}>
         {panel()}
       </main>
-      <StatusBar state={state} recording={recording} />
     </div>
   );
 }

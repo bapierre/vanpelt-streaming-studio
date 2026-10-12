@@ -3,10 +3,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RecordingSession } from '@streamhub/shared';
 import { diskWarning, formatBytes } from '../recording';
-import { initialState } from '../state';
 import { RecordControls } from './RecordControls';
 import { RecordingPanel } from './RecordingPanel';
-import { StatusBar } from './StatusBar';
 
 const GB = 1024 ** 3;
 const session = (over: Partial<RecordingSession> = {}): RecordingSession => ({
@@ -119,35 +117,6 @@ describe('RecordingPanel', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toBe('Disk space low: 12 GB free (about 1 h 35 min left)');
-  });
-});
-
-describe('StatusBar recording', () => {
-  it('shows REC with the take length and a disk warning', () => {
-    vi.setSystemTime(65_000);
-    render(
-      <StatusBar
-        state={{ ...initialState, hubConnected: true, obs: { connected: true } }}
-        recording={session({
-          output: 'recording',
-          startedAt: 0,
-          disk: { path: '/x', freeBytes: 3 * GB, level: 'critical' },
-        })}
-      />,
-    );
-    const text = screen.getByRole('contentinfo').textContent ?? '';
-    expect(text).toContain('rec · 0:01:05');
-    expect(text).toContain('Disk almost full: 3.0 GB free');
-  });
-
-  it('claims nothing about recording while OBS is disconnected', () => {
-    render(
-      <StatusBar
-        state={{ ...initialState, hubConnected: true, obs: { connected: false } }}
-        recording={session({ output: 'recording', startedAt: 0 })}
-      />,
-    );
-    expect(screen.getByRole('contentinfo').textContent).not.toContain('rec');
   });
 });
 

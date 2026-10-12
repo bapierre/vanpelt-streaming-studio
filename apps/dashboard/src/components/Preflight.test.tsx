@@ -21,7 +21,7 @@ describe('Preflight', () => {
     rerender(<Preflight checks={checks.slice(0, 2)} onFix={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Pre-flight: 1 to check' })).toBeTruthy();
     rerender(<Preflight checks={checks.slice(0, 1)} onFix={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Pre-flight: Ready' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Pre-flight: All good' })).toBeTruthy();
   });
 
   it('lists problems first, then warnings, then what passed', () => {

@@ -23,7 +23,7 @@ const FIX = {
   keys: { tab: 'settings', section: 'destinations', label: 'Stream keys' },
   platforms: { tab: 'settings', section: 'platforms', label: 'Platforms' },
   cameras: { tab: 'settings', section: 'cameras', label: 'Cameras' },
-  alerts: { tab: 'settings', section: 'alerts', label: 'Alerts' },
+  alerts: { tab: 'onscreen', section: 'alerts', label: 'Alerts' },
   sound: { tab: 'sound', label: 'Sound tab' },
 } satisfies Record<string, Fix>;
 
@@ -167,5 +167,5 @@ export function summarize(checks: Check[]): PreflightSummary {
   const warns = checks.filter((c) => c.status === 'warn').length;
   if (fails > 0) return { level: 'fail', fails, warns, label: plural(fails, 'problem') };
   if (warns > 0) return { level: 'warn', fails, warns, label: `${warns} to check` };
-  return { level: 'ok', fails, warns, label: 'Ready' };
+  return { level: 'ok', fails, warns, label: 'All good' };
 }

@@ -2,7 +2,7 @@ import type { RecordingSession } from '@streamhub/shared';
 import { isRecording } from '../recording';
 import { formatUptime } from '../state';
 import { useConfirm } from '../useConfirm';
-import { useNow } from './StatusBar';
+import { useNow } from '../useNow';
 
 function RecBadge({ recording }: { recording: RecordingSession }) {
   const now = useNow(1000);

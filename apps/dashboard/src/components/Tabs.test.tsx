@@ -35,7 +35,7 @@ describe('tabs', () => {
   it('switches with ⌘1–4 and opens Settings with ⌘,', () => {
     render(<Harness />);
     press('3');
-    expect(current()).toBe('chat');
+    expect(current()).toBe('onscreen');
     press('4');
     expect(current()).toBe('settings');
     press('2');
@@ -54,10 +54,14 @@ describe('tabs', () => {
     expect(current()).toBe('live');
   });
 
-  it('reopens the last tab, but never Settings', () => {
+  it('reopens the last tab, but never Settings or the retired Chat tab', () => {
+    localStorage.setItem('streamhub.lastTab', 'onscreen');
+    render(<Harness />);
+    expect(current()).toBe('onscreen');
+    cleanup();
     localStorage.setItem('streamhub.lastTab', 'chat');
     render(<Harness />);
-    expect(current()).toBe('chat');
+    expect(current()).toBe('live');
     cleanup();
     localStorage.setItem('streamhub.lastTab', 'settings');
     render(<Harness />);
@@ -65,7 +69,7 @@ describe('tabs', () => {
   });
 
   it('opens on the chosen start tab when one is set', () => {
-    localStorage.setItem('streamhub.lastTab', 'chat');
+    localStorage.setItem('streamhub.lastTab', 'onscreen');
     render(<Harness prefs={{ ...DEFAULT_PREFS, startTab: 'sound' }} />);
     expect(current()).toBe('sound');
   });
@@ -81,8 +85,8 @@ describe('tabs', () => {
 describe('prefs', () => {
   it('round-trips and falls back on bad values', () => {
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
-    savePrefs({ startTab: 'chat', chatSize: 'large' });
-    expect(loadPrefs()).toEqual({ startTab: 'chat', chatSize: 'large' });
+    savePrefs({ startTab: 'onscreen', chatSize: 'large' });
+    expect(loadPrefs()).toEqual({ startTab: 'onscreen', chatSize: 'large' });
     localStorage.setItem('streamhub.prefs', JSON.stringify({ startTab: 'settings', chatSize: 'huge' }));
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
     localStorage.setItem('streamhub.prefs', '{not json');

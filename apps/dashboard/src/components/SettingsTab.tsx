@@ -31,7 +31,7 @@ export function SettingsTab({ sections, initial }: { sections: SettingsSection[]
   );
 }
 
-const START_LABELS: Record<StartTab, string> = { last: 'The last tab used', live: 'Live', sound: 'Sound', chat: 'Chat' };
+const START_LABELS: Record<StartTab, string> = { last: 'The last tab used', live: 'Live', sound: 'Sound', onscreen: 'On screen' };
 const SIZE_LABELS: Record<ChatSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' };
 
 export function GeneralSettings({

@@ -1,0 +1,6 @@
+/* Chat: the Live column and the pop-out window */
+.chat-head .sm { margin-left: auto; }
+.chat-tab { min-height: 0; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.chat-window { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; }
+.chat-window-bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 var(--traffic-lights); background: var(--toolbar); border-bottom: 0.5px solid var(--separator); }
+.chat-window .chat-tab { padding: 10px; }
