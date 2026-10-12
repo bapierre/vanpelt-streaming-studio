@@ -5,7 +5,7 @@ import type { HubClient } from '@streamhub/overlay-sdk';
 import type { AudioDevices, AudioState, Envelope, MicState } from '@streamhub/shared';
 import { meterPercent, meterZone, micWarning, reduceAudio, type Levels } from '../audio';
 import { createLevelsStore, type LevelsStore } from '../levels';
-import { Mixer, type AudioActions } from './AudioPanel';
+import { type AudioActions } from './AudioPanel';
 import type { HeadsetActions } from './HeadsetMatrix';
 import { SoundTab } from './SoundTab';
 import { RANGE_SEND_MS } from './ThrottledRange';
@@ -91,14 +91,14 @@ function headsetActions() {
   } satisfies HeadsetActions;
 }
 
-function renderPanel(s: AudioState | null = state(), disabled = false) {
+function renderPanel(s: AudioState | null = state(), disabled = false, levels: LevelsStore = staticLevels({ host: { rmsDb: -20, peakDb: -4 } })) {
   const a = actions();
   const h = headsetActions();
   render(
     <SoundTab
       state={s}
       devices={devices}
-      levels={staticLevels({ host: { rmsDb: -20, peakDb: -4 } })}
+      levels={levels}
       headsets={null}
       disabled={disabled}
       hubConnected={!disabled}
@@ -114,39 +114,38 @@ function renderPanel(s: AudioState | null = state(), disabled = false) {
   return { a, h, card };
 }
 
-describe('Mixer', () => {
+describe('mic strip', () => {
   it('mutes and fades the right mic, throttling the fader', () => {
     vi.useFakeTimers();
-    const onSet = vi.fn();
-    render(<Mixer mics={[host, guest]} levels={staticLevels()} disabled={false} onSet={onSet} />);
+    const { a } = renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'Mute Guest' }));
     const fader = screen.getByLabelText('Host volume');
     fireEvent.change(fader, { target: { value: '-3' } });
     fireEvent.change(fader, { target: { value: '-6' } });
     act(() => vi.advanceTimersByTime(RANGE_SEND_MS));
-    expect(onSet.mock.calls).toEqual([[{ id: 'guest', muted: true }], [{ id: 'host', volumeDb: -6 }]]);
+    expect(a.onSet.mock.calls).toEqual([[{ id: 'guest', muted: true }], [{ id: 'host', volumeDb: -6 }]]);
   });
 
   it('pulls the fader to the bottom as silence and disables missing mics', () => {
     vi.useFakeTimers();
-    const onSet = vi.fn();
-    render(<Mixer mics={[host, lost]} levels={staticLevels()} disabled={false} onSet={onSet} />);
+    const { a } = renderPanel(state([host, lost]));
     expect((screen.getByLabelText('Lost volume') as HTMLInputElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Host volume'), { target: { value: '-60' } });
     act(() => vi.advanceTimersByTime(RANGE_SEND_MS));
-    expect(onSet).toHaveBeenCalledWith({ id: 'host', volumeDb: -100 });
+    expect(a.onSet).toHaveBeenCalledWith({ id: 'host', volumeDb: -100 });
   });
 
-  it('shows a muted mic as pressed and renders nothing without mics', () => {
-    const { container, rerender } = render(<Mixer mics={[{ ...host, muted: true }]} levels={staticLevels()} disabled={false} onSet={() => {}} />);
+  it('shows a muted mic as pressed and says when there are no mics', () => {
+    renderPanel(state([{ ...host, muted: true }]));
     expect(screen.getByRole('button', { name: 'Unmute Host' }).getAttribute('aria-pressed')).toBe('true');
-    rerender(<Mixer mics={[]} levels={staticLevels()} disabled={false} onSet={() => {}} />);
-    expect(container.innerHTML).toBe('');
+    cleanup();
+    renderPanel(state([]));
+    expect(screen.getByText('No mics yet. Each mic you add gets its own recording track.')).toBeTruthy();
   });
 
   it('meters follow the levels store, per mic', () => {
     const { store, emit } = liveLevels();
-    render(<Mixer mics={[host, guest]} levels={store} disabled={false} onSet={() => {}} />);
+    renderPanel(state(), false, store);
     const meters = screen.getAllByRole('meter');
     expect(meters[0]!.getAttribute('aria-valuenow')).toBe('-60');
     emit({ host: { rmsDb: -20, peakDb: -4 } });
@@ -210,6 +209,14 @@ describe('SoundTab mics page', () => {
     // No headset state yet: the section waits for the hub but still asks for outputs.
     expect(screen.getByText('Waiting for the hub…')).toBeTruthy();
     expect(h.onListOutputs).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the track detail while OBS is away; the banner already says it', () => {
+    renderPanel({ ...state(), recordDetail: 'OBS is not connected' }, true);
+    expect(screen.queryByText('OBS is not connected')).toBeNull();
+    cleanup();
+    renderPanel({ ...state(), recordDetail: 'Recording format FLV cannot hold extra tracks' });
+    expect(screen.getByText(/FLV/)).toBeTruthy();
   });
 });
 

@@ -67,44 +67,6 @@ export function MuteButton({ mic, disabled, onSet }: { mic: MicState; disabled: 
   );
 }
 
-/** Compact mixer: what you need during the show. Tuning lives in the Sound tab. */
-export function Mixer({
-  mics,
-  levels,
-  disabled,
-  onSet,
-}: {
-  mics: MicState[];
-  levels: LevelsStore;
-  disabled: boolean;
-  onSet: AudioActions['onSet'];
-}) {
-  if (mics.length === 0) return null;
-  return (
-    <section className="side-section mixer" aria-label="Mics">
-      <h2>Mics</h2>
-      {mics.map((mic) => {
-        const warning = micWarning(mic);
-        const off = disabled || mic.status !== 'ok';
-        return (
-          <div key={mic.id} className="mixer-row" title={warning}>
-            <div className="mixer-head">
-              <span className={mic.live && mic.status === 'ok' ? 'dot ok' : 'dot'} />
-              <span className="scene-name">{mic.name}</span>
-              {warning && <span className="cam-warn">!</span>}
-              <MuteButton mic={mic} disabled={off} onSet={onSet} />
-            </div>
-            <LiveMeter store={levels} id={mic.id} />
-            <div className="control">
-              <Fader mic={mic} disabled={off} onSet={onSet} />
-            </div>
-          </div>
-        );
-      })}
-    </section>
-  );
-}
-
 type Field = { key: string; label: string; min: number; max: number; step: number; unit: string };
 const FIELDS: Record<MicFilterKey, { title: string; help: string; fields: Field[] }> = {
   gain: {

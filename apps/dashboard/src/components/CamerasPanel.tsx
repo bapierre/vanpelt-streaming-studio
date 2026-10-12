@@ -120,7 +120,7 @@ function ControlView({ control: c, idPrefix, disabled, onSet }: { control: Camer
       <label htmlFor={id}>{c.label}</label>
       {c.kind === 'select' && (
         <select id={id} value={c.value} disabled={off} onChange={(e) => onSet(c.key, e.target.value)}>
-          {!c.options.some((o) => o.value === c.value) && <option value={c.value}>—</option>}
+          {!c.options.some((o) => o.value === c.value) && <option value={c.value}>Unknown</option>}
           {c.options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}

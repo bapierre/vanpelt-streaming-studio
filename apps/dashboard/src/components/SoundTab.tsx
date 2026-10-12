@@ -123,7 +123,8 @@ export function SoundTab({
           <TrackPills state={state} />
         </div>
         {state.tracksPending && <p className="small muted">Track changes apply to the next recording.</p>}
-        {state.recordDetail && (
+        {/* The banner already says OBS is away; only real track problems show here. */}
+        {state.recordDetail && !disabled && (
           <p className="small conn-error" role="alert">
             {state.recordDetail}
           </p>
