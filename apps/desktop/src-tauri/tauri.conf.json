@@ -18,6 +18,17 @@
           "windows": ["main"],
           "remote": { "urls": ["http://127.0.0.1:*"] },
           "permissions": ["core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize"]
+        },
+        {
+          "identifier": "chat-window",
+          "description": "Lets the pop-out chat move its own window and keep it on top; nothing else is exposed to the page.",
+          "windows": ["chat"],
+          "remote": { "urls": ["http://127.0.0.1:*"] },
+          "permissions": [
+            "core:window:allow-start-dragging",
+            "core:window:allow-internal-toggle-maximize",
+            "core:window:allow-set-always-on-top"
+          ]
         }
       ]
     }

@@ -8,7 +8,10 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tauri::{webview::NewWindowResponse, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    webview::{NewWindowFeatures, NewWindowResponse},
+    Manager, Url, WebviewUrl, WebviewWindowBuilder,
+};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
@@ -87,6 +90,74 @@ fn navigation(url: &Url, dashboard: &Url) -> Navigation {
         Navigation::Browser
     } else {
         Navigation::Reject
+    }
+}
+
+const CHAT_LABEL: &str = "chat";
+
+/// The dashboard's pop-out chat (`?view=chat`, see apps/dashboard/src/chatWindow.ts).
+fn is_chat_view(url: &Url) -> bool {
+    url.query_pairs()
+        .any(|(key, value)| key == "view" && value == "chat")
+}
+
+/// Opens the pop-out chat as its own window, or brings the open one forward. It gets the same
+/// navigation rules as the main window and cannot open further windows of its own.
+fn open_chat_window(
+    handle: &tauri::AppHandle,
+    dashboard: &Url,
+    url: Url,
+    features: NewWindowFeatures,
+) -> NewWindowResponse<tauri::Wry> {
+    if let Some(window) = handle.get_webview_window(CHAT_LABEL) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return NewWindowResponse::Deny;
+    }
+    let navigation_handle = handle.clone();
+    let navigation_origin = dashboard.clone();
+    let new_window_handle = handle.clone();
+    let new_window_origin = dashboard.clone();
+    // window_features keeps the opener's webview configuration, which macOS requires for
+    // NewWindowResponse::Create and which lets the BroadcastChannel reach the main window.
+    let window = WebviewWindowBuilder::new(handle, CHAT_LABEL, WebviewUrl::External(url))
+        .window_features(features)
+        .title("Chat")
+        .inner_size(420.0, 760.0)
+        .min_inner_size(320.0, 400.0)
+        .resizable(true);
+    #[cfg(target_os = "macos")]
+    let window = window
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(14.0, 14.0));
+    let built = window
+        .on_navigation(move |url| match navigation(url, &navigation_origin) {
+            Navigation::Dashboard => true,
+            Navigation::Browser => {
+                let _ = navigation_handle
+                    .opener()
+                    .open_url(url.as_str(), None::<&str>);
+                false
+            }
+            Navigation::Reject => false,
+        })
+        .on_new_window(move |url, _| {
+            if navigation(&url, &new_window_origin) == Navigation::Browser {
+                let _ = new_window_handle
+                    .opener()
+                    .open_url(url.as_str(), None::<&str>);
+            }
+            NewWindowResponse::Deny
+        })
+        .build();
+    match built {
+        Ok(window) => NewWindowResponse::Create { window },
+        Err(e) => {
+            eprintln!("streamhub: could not open the chat window: {e}");
+            NewWindowResponse::Deny
+        }
     }
 }
 
@@ -204,8 +275,16 @@ fn main() {
                             }
                             Navigation::Reject => false,
                         })
-                        .on_new_window(move |url, _| {
+                        .on_new_window(move |url, features| {
                             match navigation(&url, &new_window_origin) {
+                                Navigation::Dashboard if is_chat_view(&url) => {
+                                    return open_chat_window(
+                                        &new_window_handle,
+                                        &new_window_origin,
+                                        url,
+                                        features,
+                                    );
+                                }
                                 Navigation::Dashboard => {
                                     if let Some(window) =
                                         new_window_handle.get_webview_window("main")
@@ -283,6 +362,19 @@ mod tests {
             "streamhub.desktop.ready:\n",
         ] {
             assert_eq!(ready_port(line), None, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn only_the_chat_view_opens_the_chat_window() {
+        for (url, expected) in [
+            ("http://127.0.0.1:4747/?view=chat", true),
+            ("http://127.0.0.1:4747/?a=1&view=chat", true),
+            ("http://127.0.0.1:4747/", false),
+            ("http://127.0.0.1:4747/?view=chats", false),
+            ("http://127.0.0.1:4747/#view=chat", false),
+        ] {
+            assert_eq!(is_chat_view(&Url::parse(url).unwrap()), expected, "{url}");
         }
     }
 
