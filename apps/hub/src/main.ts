@@ -119,7 +119,10 @@ const audio = new AudioService({
   save: (c) => saveAudioConfig(paths.audio, c),
 });
 // The desktop app bundles the Audio Monitor plugin and points the hub at it; a bare hub skips this.
-const pluginInstall = await installAudioMonitor({ resourceDir: process.env.STREAMHUB_AUDIO_MONITOR_DIR });
+const pluginInstall = await installAudioMonitor({
+  resourceDir: process.env.STREAMHUB_AUDIO_MONITOR_DIR,
+  log: (m) => console.warn(m),
+});
 const headsets = new HeadsetService({
   bus,
   obs,

@@ -1,7 +1,7 @@
 # Bundle the Audio Monitor plugin with the desktop app
 
 Date: 2026-10-12
-Status: in progress
+Status: done
 
 ## Why
 
