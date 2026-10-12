@@ -200,7 +200,7 @@ export const ChatPanel = memo(function ChatPanel({
         <h2>Chat</h2>
         <span className="spacer" />
         {onPopOut && (
-          <button className="sm" title="Open chat in its own window" onClick={onPopOut}>
+          <button className="sm" title="Open chat in its own window (⌘⇧C)" onClick={onPopOut}>
             <Icon name="popout" />
             Pop out
           </button>

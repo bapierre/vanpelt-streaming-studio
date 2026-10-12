@@ -58,6 +58,20 @@ export function openChatWindow() {
   win?.focus();
 }
 
+/** ⌘⇧C anywhere in the dashboard opens the chat window, same as the Pop out button. */
+export function useChatShortcut() {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'KeyC') {
+        e.preventDefault();
+        openChatWindow();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+}
+
 /**
  * Whether a chat window is open, so the Live tab can hand it the space. The window announces
  * itself over a BroadcastChannel and says goodbye on close; a dashboard that opens later asks.

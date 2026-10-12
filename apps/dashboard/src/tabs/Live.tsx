@@ -170,7 +170,9 @@ export function LiveTab({ studio, prefs }: { studio: Studio; prefs: Prefs }) {
         <Panel className="live-chat-out" title="Chat">
           <p className="panel-empty">Chat is in its own window.</p>
           <div className="panel-foot">
-            <button onClick={openChatWindow}>Show chat window</button>
+            <button onClick={openChatWindow} title="Bring the chat window to the front (⌘⇧C)">
+              Show chat window
+            </button>
           </div>
         </Panel>
       ) : (

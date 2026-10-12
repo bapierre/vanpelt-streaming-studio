@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HubClient } from '@streamhub/overlay-sdk';
 import type { Envelope } from '@streamhub/shared';
 import { App } from './App';
@@ -62,6 +62,17 @@ describe('App', () => {
     expect(screen.getByText(/Waiting for the hub/)).toBeTruthy();
     fireEvent.keyDown(window, { key: '3', metaKey: true });
     expect(screen.getByRole('region', { name: 'Alerts' })).toBeTruthy();
+  });
+
+  it('opens the chat window with ⌘⇧C', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<App client={quietHub()} />);
+    fireEvent.keyDown(window, { code: 'KeyC', key: 'C', metaKey: true, shiftKey: true });
+    const [url, name, features] = open.mock.calls[0]!;
+    expect(new URL(url as string).searchParams.get('view')).toBe('chat');
+    expect(name).toBe('streamhub-chat');
+    expect(features).toBe('popup,width=420,height=760');
+    open.mockRestore();
   });
 
   it('says when the hub or OBS is offline, with a way to fix it', () => {
