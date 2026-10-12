@@ -21,6 +21,7 @@ const base = {
   sourceKey: 'mic:host',
   sourceName: 'Host',
   self: false,
+  mirrored: false,
   disabled: false,
   onSetSend: () => {},
 };

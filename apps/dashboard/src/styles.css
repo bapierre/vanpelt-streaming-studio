@@ -374,6 +374,9 @@ input:focus { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transpare
 .hp-cell { min-width: 220px; }
 .hp-cell.off output { color: var(--tertiary); }
 .hp-cell .control output { min-width: 4.5em; font-size: 11px; }
+.hp-cell.mirrored { opacity: 0.55; }
+.hp-source .badge, .hp-source .link { margin-left: 6px; font-weight: 400; }
+.hp-rename { font: inherit; font-weight: 600; color: var(--label); background: var(--surface); border: 0.5px solid var(--separator); border-radius: 6px; padding: 3px 6px; width: 100%; box-sizing: border-box; }
 
 /* Alerts and goals */
 .settings-sub { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--secondary); }

@@ -54,6 +54,7 @@ const host: MicState = {
   track: 2,
   status: 'ok',
   live: true,
+  onStream: true,
   volumeDb: 0,
   muted: false,
   monitor: 'off',
@@ -84,6 +85,8 @@ function headsetActions() {
     onUpdate: vi.fn<HeadsetActions['onUpdate']>(),
     onRemove: vi.fn<HeadsetActions['onRemove']>(),
     onSetSend: vi.fn<HeadsetActions['onSetSend']>(),
+    onSetStream: vi.fn<HeadsetActions['onSetStream']>(),
+    onRenameSource: vi.fn<HeadsetActions['onRenameSource']>(),
     onListOutputs: vi.fn<HeadsetActions['onListOutputs']>(),
   } satisfies HeadsetActions;
 }

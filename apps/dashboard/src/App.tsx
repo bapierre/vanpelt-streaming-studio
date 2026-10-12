@@ -62,6 +62,8 @@ export function App({ client }: { client: HubClient }) {
       onUpdate: (patch) => client.publish('headsets.cmd.update', patch),
       onRemove: (id) => client.publish('headsets.cmd.remove', { id }),
       onSetSend: (patch) => client.publish('headsets.cmd.setSend', patch),
+      onSetStream: (patch) => client.publish('headsets.cmd.setStream', patch),
+      onRenameSource: (patch) => client.publish('headsets.cmd.renameSource', patch),
       onListOutputs: () => client.publish('headsets.cmd.listOutputs'),
     }),
     [client],

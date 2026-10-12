@@ -14,6 +14,7 @@ const mic = (over: Partial<MicState> = {}): MicState => ({
   track: 2,
   status: 'ok',
   live: true,
+  onStream: true,
   volumeDb: 0,
   muted: false,
   monitor: 'off',
@@ -32,7 +33,11 @@ const headsets = (over: Partial<HeadsetsState> = {}): HeadsetsState => ({
   plugin: true,
   outputs: ['USB Audio'],
   sources: [],
-  headsets: [{ id: 'guest', name: 'Guest phones', device: 'USB Audio', owner: null, masterDb: 0, muted: false, status: 'ok', sends: {} }],
+  stream: {},
+  labels: {},
+  headsets: [
+    { id: 'guest', name: 'Guest phones', device: 'USB Audio', owner: null, masterDb: 0, muted: false, mirror: null, status: 'ok', sends: {} },
+  ],
   ...over,
 });
 

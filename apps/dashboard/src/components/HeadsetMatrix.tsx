@@ -9,6 +9,10 @@ import {
   type HeadsetsState,
   type HeadsetState,
   type MicState,
+  type Mirror,
+  type RenameSource,
+  type SourceKey,
+  type StreamSendPatch,
 } from '@streamhub/shared';
 import { formatDb } from '../audio';
 import { ThrottledRange } from './ThrottledRange';
@@ -18,10 +22,14 @@ export type HeadsetActions = {
   onUpdate: (patch: HeadsetPatch) => void;
   onRemove: (id: string) => void;
   onSetSend: (patch: HeadsetSendPatch) => void;
+  onSetStream: (patch: StreamSendPatch) => void;
+  onRenameSource: (patch: RenameSource) => void;
   onListOutputs: () => void;
 };
 
 const DEFAULT_SEND = { on: true, db: 0 };
+const STREAM_MIN_DB = -100;
+const STREAM_MAX_DB = 26;
 
 /** A device name: pick one the computer listed, or type it when the list is empty or wrong. */
 function DeviceInput({
@@ -64,12 +72,14 @@ function DeviceInput({
 
 const HeadsetHead = memo(function HeadsetHead({
   h,
+  headsets,
   mics,
   outputs,
   disabled,
   actions,
 }: {
   h: HeadsetState;
+  headsets: HeadsetState[];
   mics: MicState[];
   outputs: string[];
   disabled: boolean;
@@ -82,6 +92,7 @@ const HeadsetHead = memo(function HeadsetHead({
     if (d && d !== h.device) actions.onUpdate({ id: h.id, device: d });
     else setDevice(h.device);
   };
+  const followName = h.mirror === 'stream' ? null : headsets.find((o) => o.id === h.mirror)?.name;
   return (
     <th scope="col" className="hp-head" aria-label={h.name}>
       <div className="hp-title">
@@ -104,6 +115,25 @@ const HeadsetHead = memo(function HeadsetHead({
           </option>
         ))}
       </select>
+      <select
+        aria-label={`${h.name} follows`}
+        value={h.mirror ?? ''}
+        disabled={disabled}
+        onChange={(e) => actions.onUpdate({ id: h.id, mirror: (e.target.value === '' ? null : e.target.value) as Mirror | null })}
+      >
+        <option value="">Own mix</option>
+        <option value="stream">Stream mix</option>
+        {headsets
+          .filter((o) => o.id !== h.id)
+          .map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+      </select>
+      {h.mirror !== null && (
+        <p className="small muted">{h.mirror === 'stream' ? 'Following the stream mix' : `Following ${followName ?? h.mirror}`}</p>
+      )}
       <DeviceInput
         label={`${h.name} output`}
         value={device}
@@ -147,6 +177,7 @@ export const SendCell = memo(function SendCell({
   on,
   db,
   self,
+  mirrored,
   disabled,
   onSetSend,
 }: {
@@ -157,18 +188,19 @@ export const SendCell = memo(function SendCell({
   on: boolean;
   db: number;
   self: boolean;
+  mirrored: boolean;
   disabled: boolean;
   onSetSend: HeadsetActions['onSetSend'];
 }) {
   return (
-    <td className={on ? 'hp-cell' : 'hp-cell off'}>
+    <td className={`hp-cell${on ? '' : ' off'}${mirrored ? ' mirrored' : ''}`}>
       <div className="control">
         <button
           className="switch"
           role="switch"
           aria-checked={on}
           aria-label={`${sourceName} in ${headsetName}`}
-          disabled={disabled}
+          disabled={disabled || mirrored}
           onClick={() => onSetSend({ id: headsetId, source: sourceKey, on: !on })}
         />
         <ThrottledRange
@@ -177,7 +209,7 @@ export const SendCell = memo(function SendCell({
           min={HEADSET_MIN_DB}
           max={HEADSET_MAX_DB}
           step={0.5}
-          disabled={disabled || !on}
+          disabled={disabled || mirrored || !on}
           format={formatDb}
           onChange={(v) => onSetSend({ id: headsetId, source: sourceKey, db: v })}
         />
@@ -190,6 +222,119 @@ export const SendCell = memo(function SendCell({
     </td>
   );
 });
+
+/** The stream column cell: what the audience hears of one source. */
+const StreamCell = memo(function StreamCell({
+  sourceKey,
+  sourceName,
+  on,
+  db,
+  disabled,
+  onSetStream,
+}: {
+  sourceKey: SourceKey;
+  sourceName: string;
+  on: boolean;
+  db: number;
+  disabled: boolean;
+  onSetStream: HeadsetActions['onSetStream'];
+}) {
+  return (
+    <td className={on ? 'hp-cell' : 'hp-cell off'}>
+      <div className="control">
+        <button
+          className="switch"
+          role="switch"
+          aria-checked={on}
+          aria-label={`${sourceName} in Stream`}
+          disabled={disabled}
+          onClick={() => onSetStream({ source: sourceKey, on: !on })}
+        />
+        <ThrottledRange
+          label={`${sourceName} level in Stream`}
+          value={db}
+          min={STREAM_MIN_DB}
+          max={STREAM_MAX_DB}
+          step={0.5}
+          disabled={disabled || !on}
+          format={formatDb}
+          onChange={(v) => onSetStream({ source: sourceKey, db: v })}
+        />
+      </div>
+    </td>
+  );
+});
+
+/** The source row header: label, origin hint, badges, and inline rename. */
+function SourceHead({
+  sourceKey,
+  name,
+  detail,
+  kind,
+  live,
+  disabled,
+  onRenameSource,
+}: {
+  sourceKey: SourceKey;
+  name: string;
+  detail?: string;
+  kind: 'mic' | 'camera' | 'obs';
+  live: boolean;
+  disabled: boolean;
+  onRenameSource: HeadsetActions['onRenameSource'];
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const start = () => {
+    setValue(name);
+    setEditing(true);
+  };
+  const commit = () => {
+    const trimmed = value.trim();
+    setEditing(false);
+    if (trimmed !== name) onRenameSource({ source: sourceKey, name: trimmed === '' ? null : trimmed });
+  };
+  if (editing) {
+    return (
+      <th scope="row" className="hp-source">
+        <input
+          className="hp-rename"
+          aria-label={`Rename ${name}`}
+          value={value}
+          maxLength={60}
+          disabled={disabled}
+          autoFocus
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+        />
+      </th>
+    );
+  }
+  return (
+    <th scope="row" className="hp-source">
+      {name}
+      {kind === 'obs' && <span className="small muted"> · OBS</span>}
+      {kind === 'camera' && (
+        <span className="badge" title="Camera audio">
+          camera
+        </span>
+      )}
+      {!live && (
+        <span className="badge" title="Off-screen or silent right now">
+          silent
+        </span>
+      )}
+      <button className="link" disabled={disabled} onClick={start} aria-label={`Rename ${name}`}>
+        Rename
+      </button>
+      {detail && <div className="small muted">{detail}</div>}
+    </th>
+  );
+}
 
 function AddHeadset({
   mics,
@@ -250,7 +395,7 @@ function AddHeadset({
   );
 }
 
-/** One row per source, one column per headset: who hears what, and how loud. */
+/** One row per source, a stream column, and one column per headset: who hears what, and how loud. */
 export function HeadsetMatrix({
   state,
   mics,
@@ -279,7 +424,7 @@ export function HeadsetMatrix({
         </p>
         {noPlugin && (
           <p className="small conn-error" role="alert">
-            Headset mixes need the Audio Monitor plugin in OBS.{' '}
+            Headset mixes need the Audio Monitor plugin in OBS. The Stream column works without it.{' '}
             <a href={AUDIO_MONITOR_URL} target="_blank" rel="noreferrer">
               Install Audio Monitor
             </a>
@@ -295,37 +440,69 @@ export function HeadsetMatrix({
                 <th scope="col" className="hp-source">
                   Source
                 </th>
+                <th scope="col" className="hp-head" aria-label="Stream">
+                  <div className="hp-title">
+                    <strong>Stream</strong>
+                  </div>
+                  <p className="small muted">what the broadcast hears</p>
+                </th>
                 {state.headsets.map((h) => (
-                  <HeadsetHead key={h.id} h={h} mics={mics} outputs={state.outputs} disabled={disabled} actions={actions} />
+                  <HeadsetHead
+                    key={h.id}
+                    h={h}
+                    headsets={state.headsets}
+                    mics={mics}
+                    outputs={state.outputs}
+                    disabled={disabled}
+                    actions={actions}
+                  />
                 ))}
               </tr>
             </thead>
             <tbody>
-              {state.sources.map((source) => (
-                <tr key={source.key}>
-                  <th scope="row" className="hp-source">
-                    {source.name}
-                    {source.kind === 'obs' && <span className="small muted"> · OBS</span>}
-                  </th>
-                  {state.headsets.map((h) => {
-                    const send = h.sends[source.key] ?? DEFAULT_SEND;
-                    return (
-                      <SendCell
-                        key={h.id}
-                        headsetId={h.id}
-                        headsetName={h.name}
-                        sourceKey={source.key}
-                        sourceName={source.name}
-                        on={send.on}
-                        db={send.db}
-                        self={h.owner !== null && source.key === `mic:${h.owner}`}
-                        disabled={disabled}
-                        onSetSend={actions.onSetSend}
-                      />
-                    );
-                  })}
-                </tr>
-              ))}
+              {state.sources.map((source) => {
+                const name = state.labels[source.key] ?? source.name;
+                const stream = state.stream[source.key] ?? DEFAULT_SEND;
+                return (
+                  <tr key={source.key}>
+                    <SourceHead
+                      sourceKey={source.key}
+                      name={name}
+                      detail={source.detail}
+                      kind={source.kind}
+                      live={source.live}
+                      disabled={disabled}
+                      onRenameSource={actions.onRenameSource}
+                    />
+                    <StreamCell
+                      sourceKey={source.key}
+                      sourceName={name}
+                      on={stream.on}
+                      db={stream.db}
+                      disabled={disabled}
+                      onSetStream={actions.onSetStream}
+                    />
+                    {state.headsets.map((h) => {
+                      const send = h.sends[source.key] ?? DEFAULT_SEND;
+                      return (
+                        <SendCell
+                          key={h.id}
+                          headsetId={h.id}
+                          headsetName={h.name}
+                          sourceKey={source.key}
+                          sourceName={name}
+                          on={send.on}
+                          db={send.db}
+                          self={h.owner !== null && source.key === `mic:${h.owner}`}
+                          mirrored={h.mirror !== null}
+                          disabled={disabled}
+                          onSetSend={actions.onSetSend}
+                        />
+                      );
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {state.sources.length === 0 && <p className="small muted">No mics or OBS audio yet.</p>}
