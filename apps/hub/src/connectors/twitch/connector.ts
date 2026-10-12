@@ -41,7 +41,7 @@ export const TWITCH_SUBSCRIPTIONS: readonly SubscriptionSpec[] = [
 const KEEPALIVE_GRACE_MS = 5000;
 const VALIDATE_EVERY_MS = 60 * 60 * 1000;
 const SEEN_LIMIT = 1000;
-const RECONNECT_HINT = 'Reconnect Twitch in Settings → Platforms.';
+const RECONNECT_HINT = 'Reconnect Twitch in Settings → Twitch.';
 const TOTALS_EVERY_MS = 5 * 60 * 1000;
 
 type Frame = {
@@ -90,7 +90,7 @@ export class TwitchConnector implements Connector {
     this.shutdown();
     this.stopped = false;
     if (!this.opts.auth.tokens()) {
-      this.status('disconnected', 'Connect Twitch in Settings → Platforms');
+      this.status('disconnected', 'Connect Twitch in Settings → Twitch');
       return;
     }
     this.open(this.opts.url ?? EVENTSUB_URL, false);

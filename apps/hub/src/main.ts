@@ -46,7 +46,8 @@ const bus = new Bus();
 const store = new SecretsStore(paths.secrets);
 await store.load();
 
-const twitchAuth = cfg.twitchClientId ? new TwitchAuth({ clientId: cfg.twitchClientId, store }) : null;
+// TwitchAuth always exists: the app client id can arrive from the dashboard at any time, no restart.
+const twitchAuth = new TwitchAuth({ clientId: cfg.twitchClientId, store });
 const youtubeAuth = new YouTubeAuth({ store, redirectUri: `http://127.0.0.1:${cfg.port}/oauth/youtube/callback` });
 const youtubeApi = createYouTubeApi();
 const xAuth = new XAuth({ store, redirectUri: `http://127.0.0.1:${cfg.port}/oauth/x/callback` });
@@ -68,17 +69,13 @@ const connectors: Connector[] = [
     api: xApi,
     onAuthLost: (detail) => late.connections?.authLost('x', detail),
   }),
+  new TwitchConnector({
+    bus,
+    auth: twitchAuth,
+    createSocket: (url) => new WebSocket(url) as unknown as SocketLike,
+    onAuthLost: (detail) => late.connections?.authLost('twitch', detail),
+  }),
 ];
-if (twitchAuth) {
-  connectors.push(
-    new TwitchConnector({
-      bus,
-      auth: twitchAuth,
-      createSocket: (url) => new WebSocket(url) as unknown as SocketLike,
-      onAuthLost: (detail) => late.connections?.authLost('twitch', detail),
-    }),
-  );
-}
 const manager = new ConnectorManager(connectors);
 const connections = new ConnectionsService({
   bus,

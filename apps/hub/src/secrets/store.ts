@@ -3,7 +3,17 @@ import { chmod, mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises
 import { dirname } from 'node:path';
 import type { StreamDestination } from '@streamhub/shared';
 
-export type TwitchSecrets = { accessToken: string; refreshToken: string; userId: string; login: string };
+/** Twitch public (Device Code Flow) app: no client secret exists. `clientId` is saved from the
+ * dashboard and wins over `TWITCH_CLIENT_ID` in `.env`; the token fields appear once connected. */
+export type TwitchSecrets = {
+  clientId?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  userId?: string;
+  login?: string;
+};
+/** The connected sign-in: only this pair can exist partially-fresh, so both are always present. */
+export type TwitchTokens = Required<Pick<TwitchSecrets, 'accessToken' | 'refreshToken'>> & TwitchSecrets;
 export type YouTubeSecrets = {
   clientId: string;
   clientSecret: string;

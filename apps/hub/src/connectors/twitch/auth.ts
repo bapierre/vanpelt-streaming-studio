@@ -1,4 +1,4 @@
-import type { SecretsStore, TwitchSecrets } from '../../secrets/store';
+import type { SecretsStore, TwitchSecrets, TwitchTokens } from '../../secrets/store';
 
 const ID_URL = 'https://id.twitch.tv/oauth2';
 const HELIX_URL = 'https://api.twitch.tv/helix';
@@ -22,7 +22,8 @@ export type DeviceCode = {
 };
 
 type Options = {
-  clientId: string;
+  /** The `.env` client id, used while none is saved. May be empty: the dashboard can save one later. */
+  clientId?: string;
   store: SecretsStore;
   fetchFn?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -31,7 +32,7 @@ type Options = {
 
 /** Device Code Grant Flow for a Public client (no secret). See docs/connectors/twitch.md §2. */
 export class TwitchAuth {
-  private refreshing: Promise<TwitchSecrets> | null = null;
+  private refreshing: Promise<TwitchTokens> | null = null;
   /** Bumped by clear(); in-flight sign-ins and refreshes started earlier must not write tokens back. */
   private generation = 0;
   private readonly fetchFn: typeof fetch;
@@ -44,12 +45,30 @@ export class TwitchAuth {
     this.now = opts.now ?? Date.now;
   }
 
-  tokens(): TwitchSecrets | undefined {
-    return this.opts.store.get().twitch;
+  /** The app id to use: one saved from the dashboard first, `.env` as the fallback. */
+  clientId(): string | undefined {
+    return this.opts.store.get().twitch?.clientId || this.opts.clientId || undefined;
+  }
+
+  clientConfigured(): boolean {
+    return Boolean(this.clientId());
+  }
+
+  tokens(): TwitchTokens | undefined {
+    const t = this.opts.store.get().twitch;
+    if (!t?.accessToken || !t.refreshToken) return undefined;
+    return { ...t, accessToken: t.accessToken, refreshToken: t.refreshToken };
+  }
+
+  /** Saving a new app id drops any tokens issued to the previous one. */
+  async setClient(clientId: string): Promise<void> {
+    this.generation++;
+    this.refreshing = null;
+    await this.opts.store.update((s) => ({ ...s, twitch: { clientId: clientId.trim() } }));
   }
 
   async startDeviceFlow(): Promise<DeviceCode> {
-    const res = await this.post('/device', { client_id: this.opts.clientId, scopes: TWITCH_SCOPES });
+    const res = await this.post('/device', { client_id: this.requireClientId(), scopes: TWITCH_SCOPES });
     if (!res.ok) throw new TwitchAuthError(`Twitch refused to start sign-in (${res.status})`);
     const b = (await res.json()) as {
       device_code: string;
@@ -67,14 +86,14 @@ export class TwitchAuth {
     };
   }
 
-  async pollDeviceFlow(code: DeviceCode, signal?: AbortSignal): Promise<TwitchSecrets> {
+  async pollDeviceFlow(code: DeviceCode, signal?: AbortSignal): Promise<TwitchTokens> {
     const generation = this.generation;
     while (this.now() < code.expiresAt) {
       if (signal?.aborted) throw new TwitchAuthError('sign-in cancelled');
       await this.sleep(code.intervalMs);
       if (signal?.aborted) throw new TwitchAuthError('sign-in cancelled');
       const res = await this.post('/token', {
-        client_id: this.opts.clientId,
+        client_id: this.requireClientId(),
         scopes: TWITCH_SCOPES,
         device_code: code.deviceCode,
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
@@ -101,7 +120,7 @@ export class TwitchAuth {
     }
   }
 
-  refresh(): Promise<TwitchSecrets> {
+  refresh(): Promise<TwitchTokens> {
     this.refreshing ??= this.doRefresh().finally(() => {
       this.refreshing = null;
     });
@@ -111,13 +130,14 @@ export class TwitchAuth {
   async helix(path: string, init: RequestInit = {}): Promise<Response> {
     const t = this.tokens();
     if (!t) throw new TwitchAuthError('Twitch is not connected');
+    const clientId = this.requireClientId();
     const send = (token: string) =>
       this.fetchFn(`${HELIX_URL}${path}`, {
         ...init,
         headers: {
           ...(init.headers as Record<string, string> | undefined),
           Authorization: `Bearer ${token}`,
-          'Client-Id': this.opts.clientId,
+          'Client-Id': clientId,
         },
       });
     const res = await send(t.accessToken);
@@ -126,30 +146,39 @@ export class TwitchAuth {
     return send(fresh.accessToken);
   }
 
+  /** Disconnect drops the sign-in, not the saved app id: reconnecting should not re-ask for it. */
   async clear(): Promise<void> {
     this.generation++;
+    this.refreshing = null;
     await this.opts.store.update((s) => {
+      const clientId = s.twitch?.clientId;
       const rest = { ...s };
       delete rest.twitch;
-      return rest;
+      return clientId ? { ...rest, twitch: { clientId } } : rest;
     });
   }
 
-  private async doRefresh(): Promise<TwitchSecrets> {
+  private requireClientId(): string {
+    const id = this.clientId();
+    if (!id) throw new TwitchAuthError('Twitch needs its app client ID first (see docs/setup/twitch.md)');
+    return id;
+  }
+
+  private async doRefresh(): Promise<TwitchTokens> {
     const t = this.tokens();
     if (!t) throw new TwitchAuthError('Twitch is not connected');
     const generation = this.generation;
     const res = await this.post('/token', {
       grant_type: 'refresh_token',
       refresh_token: t.refreshToken,
-      client_id: this.opts.clientId,
+      client_id: this.requireClientId(),
     });
     if (res.status === 400 || res.status === 401) {
       throw new TwitchLoginRejectedError(`Twitch rejected the token refresh (${res.status})`);
     }
     if (!res.ok) throw new TwitchAuthError(`Twitch token refresh failed (${res.status})`);
     const b = (await res.json()) as { access_token: string; refresh_token: string };
-    let next: TwitchSecrets | undefined;
+    let next: TwitchTokens | undefined;
     await this.opts.store.update((s) => {
       if (generation !== this.generation || !s.twitch) return s; // disconnected (or re-signed-in) while the refresh was in flight
       next = { ...s.twitch, accessToken: b.access_token, refreshToken: b.refresh_token };
@@ -159,13 +188,14 @@ export class TwitchAuth {
     return next;
   }
 
-  private async saveTokens(accessToken: string, refreshToken: string, generation: number): Promise<TwitchSecrets> {
+  private async saveTokens(accessToken: string, refreshToken: string, generation: number): Promise<TwitchTokens> {
     const who = await this.whoAmI(accessToken);
     if (!who) throw new TwitchAuthError('Twitch returned a token that does not validate');
     const tokens = { accessToken, refreshToken, ...who };
     await this.opts.store.update((s) => {
       if (generation !== this.generation) throw new TwitchAuthError('sign-in cancelled');
-      return { ...s, twitch: tokens };
+      // A saved app id stays with the tokens it signed in with.
+      return { ...s, twitch: { ...s.twitch, ...tokens } };
     });
     return tokens;
   }

@@ -197,3 +197,72 @@ describe('TwitchAuth tokens', () => {
     expect(store.get()).toEqual({ youtube: { clientId: 'c', clientSecret: 's' } });
   });
 });
+
+describe('TwitchAuth app client id', () => {
+  const seededTokens = () => store.update((s) => ({ ...s, twitch: { accessToken: 'at', refreshToken: 'rt', userId: '42', login: 'yatf' } }));
+
+  it('reports no client while none is saved and .env has none', () => {
+    const auth = new TwitchAuth({ store });
+    expect(auth.clientConfigured()).toBe(false);
+    expect(auth.clientId()).toBeUndefined();
+    expect(auth.tokens()).toBeUndefined();
+  });
+
+  it('falls back to the .env client id', () => {
+    const auth = new TwitchAuth({ clientId: 'from-env', store });
+    expect(auth.clientConfigured()).toBe(true);
+    expect(auth.clientId()).toBe('from-env');
+  });
+
+  it('saves the client id from the dashboard, trimmed, and a saved id wins over .env', async () => {
+    const auth = new TwitchAuth({ clientId: 'from-env', store });
+    await auth.setClient('  pasted  ');
+    expect(auth.clientId()).toBe('pasted');
+    expect(store.get().twitch).toEqual({ clientId: 'pasted' });
+    expect(auth.tokens()).toBeUndefined();
+  });
+
+  it('keeps using the stored tokens after a sign-in and reports connected', async () => {
+    await seededTokens();
+    const auth = new TwitchAuth({ clientId: 'from-env', store, fetchFn: fakeFetch(() => validateOk()) });
+    expect(auth.tokens()).toEqual({ accessToken: 'at', refreshToken: 'rt', userId: '42', login: 'yatf' });
+    expect(auth.clientConfigured()).toBe(true);
+  });
+
+  it('saving a new id drops the sign-in that belonged to the previous app', async () => {
+    await seededTokens();
+    const auth = new TwitchAuth({ store });
+    await auth.setClient('pasted');
+    expect(auth.tokens()).toBeUndefined();
+    expect(store.get().twitch).toEqual({ clientId: 'pasted' });
+  });
+
+  it('disconnect keeps the saved id so reconnecting does not re-ask for it', async () => {
+    const auth = new TwitchAuth({ store });
+    await auth.setClient('pasted');
+    await store.update((s) => ({ ...s, twitch: { ...s.twitch, accessToken: 'at', refreshToken: 'rt' } }));
+    await auth.clear();
+    expect(store.get().twitch).toEqual({ clientId: 'pasted' });
+    expect(auth.clientConfigured()).toBe(true);
+  });
+
+  it('refuses to start a sign-in without any client id, instead of calling Twitch', async () => {
+    const fetchFn = fakeFetch(() => json(200, {}));
+    const auth = new TwitchAuth({ store, fetchFn });
+    await expect(auth.startDeviceFlow()).rejects.toBeInstanceOf(TwitchAuthError);
+    expect(fetchFn.calls).toEqual([]);
+  });
+
+  it('sign-in stores tokens next to the saved id and uses the saved id for the flow', async () => {
+    const fetchFn = fakeFetch(({ url }) => {
+      if (url.endsWith('/validate')) return validateOk();
+      return json(200, { access_token: 'at', refresh_token: 'rt', expires_in: 14000, scope: [], token_type: 'bearer' });
+    });
+    const auth = new TwitchAuth({ store, fetchFn, sleep, now: () => 0 });
+    await auth.setClient('pasted');
+    await auth.pollDeviceFlow(code);
+    expect(store.get().twitch).toEqual({ clientId: 'pasted', accessToken: 'at', refreshToken: 'rt', userId: '42', login: 'yatf' });
+    const poll = fetchFn.calls.find((c) => c.url.endsWith('/token'))!;
+    expect(poll.form.get('client_id')).toBe('pasted');
+  });
+});

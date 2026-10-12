@@ -6,7 +6,7 @@ import { ConnectionsService, type ConnectionsDeps } from './service';
 
 let bus: Bus;
 let all: Envelope[];
-let twitch: { [K in 'tokens' | 'startDeviceFlow' | 'pollDeviceFlow' | 'clear']: ReturnType<typeof vi.fn> };
+let twitch: { [K in 'tokens' | 'clientConfigured' | 'setClient' | 'startDeviceFlow' | 'pollDeviceFlow' | 'clear']: ReturnType<typeof vi.fn> };
 let youtube: Record<string, ReturnType<typeof vi.fn>>;
 let x: Record<string, ReturnType<typeof vi.fn>>;
 let xApi: { me: ReturnType<typeof vi.fn> };
@@ -33,6 +33,8 @@ beforeEach(() => {
   bus.subscribe(['*'], (e) => all.push(e));
   twitch = {
     tokens: vi.fn(() => undefined),
+    clientConfigured: vi.fn(() => true),
+    setClient: vi.fn(async () => {}),
     startDeviceFlow: vi.fn(async () => ({ deviceCode: 'd', userCode: 'ABCDEFGH', verificationUri: 'https://www.twitch.tv/activate?public=true&device-code=ABCDEFGH', intervalMs: 5000, expiresAt: 1e15 })),
     pollDeviceFlow: vi.fn(async () => ({ accessToken: 'a', refreshToken: 'r', userId: '1', login: 'yatf' })),
     clear: vi.fn(async () => {}),
@@ -75,25 +77,54 @@ describe('ConnectionsService', () => {
   it('publishes initial states', () => {
     twitch.tokens.mockReturnValue({ login: 'yatf' });
     service.start();
-    expect(states('twitch')).toEqual([{ platform: 'twitch', state: 'connected', account: 'yatf' }]);
+    expect(states('twitch')).toEqual([{ platform: 'twitch', state: 'connected', account: 'yatf', clientConfigured: true }]);
     expect(states('youtube')).toEqual([{ platform: 'youtube', state: 'disconnected', clientConfigured: false }]);
     expect(states('kick')).toEqual([{ platform: 'kick', state: 'disconnected', detail: 'Kick arrives with the relay (M3).' }]);
     expect(states('x')).toEqual([{ platform: 'x', state: 'disconnected', clientConfigured: false }]);
   });
 
-  it('explains how to configure Twitch when no client id is set', () => {
-    make({ twitch: null }).start();
-    expect(states('twitch')[0]).toMatchObject({ state: 'disconnected', detail: expect.stringContaining('TWITCH_CLIENT_ID') });
+  it('says Twitch is not set up while no client id is saved, and connect explains the one-time step', async () => {
+    twitch.clientConfigured.mockReturnValue(false);
+    service.start();
+    expect(states('twitch')[0]).toEqual({ platform: 'twitch', state: 'disconnected', clientConfigured: false });
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    expect(twitch.startDeviceFlow).not.toHaveBeenCalled();
+    expect(states('twitch').at(-1)).toEqual({
+      platform: 'twitch',
+      state: 'error',
+      clientConfigured: false,
+      detail: 'Add your Twitch app client ID first (see docs/setup/twitch.md).',
+    });
+  });
+
+  it('saves the Twitch client id from the dashboard, halting the connector first', async () => {
+    twitch.clientConfigured.mockReturnValue(false);
+    twitch.setClient.mockImplementation(async () => twitch.clientConfigured.mockReturnValue(true));
+    service.start();
+    cmd('connections.cmd.setTwitchClient', { clientId: 'cid' });
+    await settle();
+    expect(halt).toHaveBeenCalledWith('twitch');
+    expect(twitch.setClient).toHaveBeenCalledWith('cid');
+    expect(states('twitch').at(-1)).toEqual({ platform: 'twitch', state: 'disconnected', clientConfigured: true });
+  });
+
+  it('connects Twitch once a client id is saved', async () => {
+    service.start();
+    cmd('connections.cmd.connect', { platform: 'twitch' });
+    await settle();
+    expect(twitch.startDeviceFlow).toHaveBeenCalled();
   });
 
   it('reports lost Twitch auth as an error and can connect again from it', async () => {
     twitch.tokens.mockReturnValue({ login: 'yatf' });
     service.start();
-    service.authLost('twitch', 'Twitch login expired. Reconnect Twitch in Settings → Platforms.');
+    service.authLost('twitch', 'Twitch login expired. Reconnect Twitch in Settings → Twitch.');
     expect(states('twitch').at(-1)).toEqual({
       platform: 'twitch',
       state: 'error',
-      detail: 'Twitch login expired. Reconnect Twitch in Settings → Platforms.',
+      clientConfigured: true,
+      detail: 'Twitch login expired. Reconnect Twitch in Settings → Twitch.',
     });
     cmd('connections.cmd.connect', { platform: 'twitch' });
     await settle();

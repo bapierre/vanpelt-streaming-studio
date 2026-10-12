@@ -8,7 +8,7 @@ import type { XAuth } from '../connectors/x/auth';
 import { describeError } from '../util/errors';
 
 const KICK_NOTE = 'Kick arrives with the relay (M3).';
-const TWITCH_SETUP = 'Set TWITCH_CLIENT_ID in .env (see docs/setup/twitch.md), then restart streamhub.';
+const TWITCH_SETUP = 'Add your Twitch app client ID first (see docs/setup/twitch.md).';
 const YOUTUBE_SETUP = 'Add your Google OAuth client first (see docs/setup/youtube.md).';
 const X_SETUP = 'Add your X app client ID first (see docs/setup/x.md).';
 
@@ -23,7 +23,8 @@ const cleanError = (v: unknown): string | undefined => {
 
 export type ConnectionsDeps = {
   bus: Bus;
-  twitch: Pick<TwitchAuth, 'tokens' | 'startDeviceFlow' | 'pollDeviceFlow' | 'clear'> | null;
+  /** Always present: without a client id yet it reports `clientConfigured: false`. */
+  twitch: Pick<TwitchAuth, 'tokens' | 'clientConfigured' | 'setClient' | 'startDeviceFlow' | 'pollDeviceFlow' | 'clear'>;
   youtube: Pick<
     YouTubeAuth,
     'clientConfigured' | 'connected' | 'account' | 'setClient' | 'setAccount' | 'beginAuth' | 'completeAuth' | 'accessToken' | 'clearTokens'
@@ -45,24 +46,16 @@ export class ConnectionsService {
   constructor(private readonly deps: ConnectionsDeps) {}
 
   start() {
-    const { twitch } = this.deps;
-    const t = twitch?.tokens();
-    this.state(
-      t ? { platform: 'twitch', state: 'connected', account: t.login } : { platform: 'twitch', state: 'disconnected', ...(twitch ? {} : { detail: TWITCH_SETUP }) },
-    );
+    this.state(this.twitchIdle());
     this.state(this.youtubeIdle());
     this.state(this.xIdle());
     this.state({ platform: 'kick', state: 'disconnected', detail: KICK_NOTE });
     this.deps.bus.subscribe(['connections.cmd.'], (e) => void this.handle(e));
   }
 
-  /** A connector stopped because the user must reconnect: show it in Settings → Platforms. */
+  /** A connector stopped because the user must reconnect: show it on that platform's Settings page. */
   authLost(platform: 'twitch' | 'youtube' | 'x', detail: string) {
-    this.state(
-      platform === 'youtube' || platform === 'x'
-        ? { platform, state: 'error', clientConfigured: true, detail }
-        : { platform, state: 'error', detail },
-    );
+    this.state({ platform, state: 'error', clientConfigured: true, detail });
   }
 
   async handleYouTubeCallback(query: Record<string, string | undefined>): Promise<string> {
@@ -114,6 +107,13 @@ export class ConnectionsService {
           return await this.connect((e.payload as EventPayload<'connections.cmd.connect'>).platform);
         case 'connections.cmd.disconnect':
           return await this.disconnect((e.payload as EventPayload<'connections.cmd.disconnect'>).platform);
+        case 'connections.cmd.setTwitchClient': {
+          const p = e.payload as EventPayload<'connections.cmd.setTwitchClient'>;
+          await this.deps.halt('twitch');
+          await this.deps.twitch.setClient(p.clientId);
+          this.state(this.twitchIdle());
+          return;
+        }
         case 'connections.cmd.setYoutubeClient': {
           const p = e.payload as EventPayload<'connections.cmd.setYoutubeClient'>;
           await this.deps.halt('youtube');
@@ -143,7 +143,9 @@ export class ConnectionsService {
 
   private async connectTwitch() {
     const { twitch } = this.deps;
-    if (!twitch) return this.state({ platform: 'twitch', state: 'error', detail: TWITCH_SETUP });
+    if (!twitch.clientConfigured()) {
+      return this.state({ platform: 'twitch', state: 'error', clientConfigured: false, detail: TWITCH_SETUP });
+    }
     this.twitchAbort?.abort();
     const abort = new AbortController();
     this.twitchAbort = abort;
@@ -181,8 +183,8 @@ export class ConnectionsService {
     if (platform === 'twitch') this.twitchAbort?.abort();
     await this.deps.halt(platform);
     if (platform === 'twitch') {
-      await this.deps.twitch?.clear();
-      return this.state({ platform: 'twitch', state: 'disconnected', ...(this.deps.twitch ? {} : { detail: TWITCH_SETUP }) });
+      await this.deps.twitch.clear();
+      return this.state(this.twitchIdle());
     }
     if (platform === 'x') {
       await this.deps.x.clearTokens();
@@ -190,6 +192,13 @@ export class ConnectionsService {
     }
     await this.deps.youtube.clearTokens();
     this.state(this.youtubeIdle());
+  }
+
+  private twitchIdle(): ConnectionState {
+    const { twitch } = this.deps;
+    const t = twitch.tokens();
+    if (t) return { platform: 'twitch', state: 'connected', account: t.login, clientConfigured: true };
+    return { platform: 'twitch', state: 'disconnected', clientConfigured: twitch.clientConfigured() };
   }
 
   private youtubeIdle(): ConnectionState {
