@@ -1,7 +1,16 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
-import { HEADSET_MAX_DB, HEADSET_MIN_DB, HeadsetIdSchema, HeadsetSendSchema, MicIdSchema, SourceKeySchema } from '@streamhub/shared';
+import {
+  HEADSET_MAX_DB,
+  HEADSET_MIN_DB,
+  HeadsetIdSchema,
+  HeadsetSendSchema,
+  MicIdSchema,
+  MirrorSchema,
+  SourceKeySchema,
+  StreamSendSchema,
+} from '@streamhub/shared';
 import { describeError } from '../util/errors';
 
 export const HeadsetConfigSchema = z.object({
@@ -11,6 +20,8 @@ export const HeadsetConfigSchema = z.object({
   owner: MicIdSchema.nullable().default(null),
   masterDb: z.number().min(HEADSET_MIN_DB).max(HEADSET_MAX_DB).default(0),
   muted: z.boolean().default(false),
+  /** Follow the stream wiring or another output live instead of holding an own mix. */
+  mirror: MirrorSchema.nullable().default(null),
   sends: z.record(SourceKeySchema, HeadsetSendSchema).default({}),
 });
 export type HeadsetConfig = z.infer<typeof HeadsetConfigSchema>;
@@ -21,10 +32,14 @@ export const HeadsetsFileSchema = z.object({
     .max(16)
     .default([])
     .refine((l) => new Set(l.map((h) => h.id)).size === l.length, { message: 'headset ids must be unique' }),
+  /** Display-name overrides per source, set from the routing matrix. */
+  labels: z.record(SourceKeySchema, z.string()).default({}),
+  /** Stream wiring (OBS track 1) and fader per non-mic source. Mic wiring lives in audio.json. */
+  streamSends: z.record(SourceKeySchema, StreamSendSchema).default({}),
 });
 export type HeadsetsConfig = z.infer<typeof HeadsetsFileSchema>;
 
-export const emptyHeadsetsConfig = (): HeadsetsConfig => ({ headsets: [] });
+export const emptyHeadsetsConfig = (): HeadsetsConfig => ({ headsets: [], labels: {}, streamSends: {} });
 
 /** A missing file means no headsets; a broken file is logged and ignored so the hub still starts. */
 export async function loadHeadsetsConfig(path: string, log: (msg: string) => void = console.warn): Promise<HeadsetsConfig> {

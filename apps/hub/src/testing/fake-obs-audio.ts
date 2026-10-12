@@ -216,6 +216,8 @@ export class FakeObsAudio extends EventEmitter {
       case 'SetInputAudioTracks':
         this.input(data.inputName).tracks = { ...(data.inputAudioTracks as Record<string, boolean>) };
         return {};
+      case 'GetInputAudioTracks':
+        return { inputAudioTracks: { ...this.input(data.inputName).tracks } };
       case 'GetSourceActive':
         return { videoActive: this.input(data.sourceName).active, videoShowing: this.input(data.sourceName).active };
       case 'GetProfileParameter': {

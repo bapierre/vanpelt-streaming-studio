@@ -123,6 +123,7 @@ const headsets = new HeadsetService({
   config: await loadHeadsetsConfig(paths.headsets),
   save: (c) => saveHeadsetsConfig(paths.headsets, c),
   listOutputs: () => listOutputDevices(),
+  cameras: cameraConfigs.map((c) => ({ name: c.name, source: c.source })),
 });
 const recording = new RecordingService({ bus, obs, cameras: cameraConfigs });
 const alerts = new AlertService({

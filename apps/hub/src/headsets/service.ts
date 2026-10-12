@@ -1,20 +1,28 @@
 import {
+  HEADSET_MIN_DB,
   micSourceKey,
+  MIX_TRACK,
   obsSourceKey,
   type AudioState,
   type Envelope,
   type EventPayload,
   type HeadsetAdd,
   type HeadsetPatch,
+  type HeadsetSend,
   type HeadsetSendPatch,
   type HeadsetSource,
   type HeadsetsState,
   type HeadsetState,
   type KnownEventType,
+  type Mirror,
+  type RenameSource,
   type SourceKey,
+  type StreamSend,
+  type StreamSendPatch,
 } from '@streamhub/shared';
 import type { AudioObs } from '../audio/service';
 import { micIdFor } from '../audio/config';
+import { dbFromObs } from '../audio/obs-audio';
 import { isNotFound } from '../cameras/obs-side';
 import type { Bus } from '../bus/bus';
 import { describeError } from '../util/errors';
@@ -36,6 +44,8 @@ export type HeadsetServiceOptions = {
   config: HeadsetsConfig;
   save: (cfg: HeadsetsConfig) => Promise<void>;
   listOutputs: () => Promise<OutputList>;
+  /** Cameras from the config file; their OBS sources become `camera` sources in the matrix. */
+  cameras?: Array<{ name: string; source: string }>;
   timer?: Timer;
   log?: (msg: string) => void;
 };
@@ -44,10 +54,12 @@ export type HeadsetServiceOptions = {
 const PROBE_INPUT = 'streamhub device probe';
 /** Volume changes smaller than this (in %) are not worth a request. */
 const VOLUME_EPSILON = 0.01;
+/** Fader changes smaller than this (dB) are not worth a request. */
+const DB_EPSILON = 0.05;
 /** A slider drag saves once it pauses for this long, not on every tick. */
 export const SAVE_DELAY_MS = 1000;
 
-type Mic = { id: string; name: string; input: string; muted: boolean; ok: boolean };
+type Mic = { id: string; name: string; input: string; muted: boolean; ok: boolean; onStream: boolean; volumeDb: number; live: boolean };
 /** What the hub last wrote to (or read from) one headset filter on one input. */
 type Applied = { enabled: boolean; volume: number; device: string };
 type ObsFilter = { filterName: string; filterKind: string; filterIndex: number; filterEnabled: boolean; filterSettings: Record<string, unknown> };
@@ -68,6 +80,12 @@ export class HeadsetService {
   private mics: Mic[] = [];
   /** Every OBS input that carries audio, in OBS's order, with its mute state. */
   private audioInputs = new Map<string, { muted: boolean }>();
+  /** Whether OBS produces audio for an input right now (false when its scene is off-screen). */
+  private readonly liveInputs = new Map<string, boolean>();
+  /** Stream wiring and fader per non-mic input, seeded from OBS and overlaid by the config. */
+  private readonly streamState = new Map<string, StreamSend>();
+  /** What OBS last held (read or written) per input, so reconnects only send real changes. */
+  private readonly streamApplied = new Map<string, StreamSend>();
   private readonly applied = new Map<string, Applied>();
   private readonly reorderQueued = new Set<string>();
   private outputs: OutputList = { outputs: [] };
@@ -145,11 +163,50 @@ export class HeadsetService {
 
   private sources(): HeadsetSource[] {
     const micInputs = new Set(this.mics.map((m) => m.input));
-    const mics = this.mics.map((m): HeadsetSource => ({ key: micSourceKey(m.id), name: m.name, kind: 'mic' }));
+    const cameraOf = new Map((this.opts.cameras ?? []).map((c) => [c.source, c.name]));
+    const mics = this.mics.map(
+      (m): HeadsetSource => ({ key: micSourceKey(m.id), name: m.name, kind: 'mic', detail: m.input, live: m.live }),
+    );
     const others = [...this.audioInputs.keys()]
       .filter((name) => !micInputs.has(name) && name !== PROBE_INPUT)
-      .map((name): HeadsetSource => ({ key: obsSourceKey(name), name, kind: 'obs' }));
+      .map((name): HeadsetSource => {
+        const camera = cameraOf.get(name);
+        // Assume live until OBS says otherwise, so unknown states never cry wolf.
+        const live = this.liveInputs.get(name) ?? true;
+        return camera
+          ? { key: obsSourceKey(name), name: camera, kind: 'camera', detail: name, live }
+          : { key: obsSourceKey(name), name, kind: 'obs', live };
+      });
     return [...mics, ...others];
+  }
+
+  /** The stream column: what the audience hears. Mics defer to the audio service's own state. */
+  private streamColumn(): Record<SourceKey, StreamSend> {
+    const out: Record<SourceKey, StreamSend> = {};
+    for (const m of this.mics) out[micSourceKey(m.id)] = { on: m.onStream, db: m.volumeDb };
+    for (const input of this.audioInputs.keys()) {
+      if (this.mics.some((m) => m.input === input) || input === PROBE_INPUT) continue;
+      out[obsSourceKey(input)] = this.opts.config.streamSends[obsSourceKey(input)] ?? this.streamState.get(input) ?? { on: true, db: 0 };
+    }
+    return out;
+  }
+
+  /** What an output actually plays: its own mix, or the mirrored node's when it follows one. */
+  private effectiveSends(h: HeadsetConfig): Record<SourceKey, HeadsetSend> {
+    if (h.mirror === 'stream') {
+      const out: Record<SourceKey, HeadsetSend> = {};
+      // Monitor filters tap before the OBS fader, so the stream fader is folded into the send.
+      for (const [key, s] of Object.entries(this.streamColumn())) {
+        out[key] = { on: s.on, db: Math.max(HEADSET_MIN_DB, Math.min(0, s.db)) };
+      }
+      return out;
+    }
+    if (h.mirror) {
+      const target = this.headsets.find((x) => x.id === h.mirror);
+      // Cycles are rejected when the mirror is set, so this recursion always bottoms out.
+      if (target) return this.effectiveSends(target);
+    }
+    return h.sends;
   }
 
   /** The OBS input a source plays from, and whether it is muted; null when it cannot play right now. */
@@ -184,6 +241,8 @@ export class HeadsetService {
       outputs: this.outputs.outputs,
       ...(this.outputs.detail ? { outputsDetail: this.outputs.detail } : {}),
       sources: this.sources(),
+      stream: this.streamColumn(),
+      labels: this.opts.config.labels,
       headsets: this.headsets.map((h) => {
         const detail = this.detailFor(h);
         return {
@@ -193,9 +252,10 @@ export class HeadsetService {
           owner: h.owner,
           masterDb: h.masterDb,
           muted: h.muted,
+          mirror: h.mirror,
           status,
           ...(detail ? { detail } : {}),
-          sends: h.sends,
+          sends: this.effectiveSends(h),
         };
       }),
     };
@@ -226,13 +286,16 @@ export class HeadsetService {
     }, SAVE_DELAY_MS);
   }
 
-  /** Sources that appeared since a headset was set up join it switched on, at full level. */
+  /**
+   * Sources that appeared since an output was set up join it at full level. Camera audio joins
+   * off: a camera powering on should not suddenly put its shotgun mic into everyone's ears.
+   */
   private fillSends(): boolean {
     let changed = false;
     for (const source of this.sources()) {
       for (const h of this.headsets) {
         if (h.sends[source.key]) continue;
-        h.sends[source.key] = { on: true, db: 0 };
+        h.sends[source.key] = { on: source.kind !== 'camera', db: 0 };
         changed = true;
       }
     }
@@ -260,13 +323,25 @@ export class HeadsetService {
         this.connected = connected;
         // Whatever OBS had, it is re-read on the next connect.
         this.applied.clear();
+        this.streamApplied.clear();
+        this.streamState.clear();
+        this.liveInputs.clear();
         if (connected) this.run('refresh', () => this.refreshAll());
         this.publish();
         return;
       }
       case 'audio.state': {
         const { mics } = e.payload as AudioState;
-        this.mics = mics.map((m) => ({ id: m.id, name: m.name, input: m.input, muted: m.muted, ok: m.status === 'ok' }));
+        this.mics = mics.map((m) => ({
+          id: m.id,
+          name: m.name,
+          input: m.input,
+          muted: m.muted,
+          ok: m.status === 'ok',
+          onStream: m.onStream,
+          volumeDb: m.volumeDb,
+          live: m.live,
+        }));
         return this.changed(false);
       }
       case 'headsets.cmd.add':
@@ -282,6 +357,10 @@ export class HeadsetService {
       }
       case 'headsets.cmd.setSend':
         return this.setSend(e.payload as HeadsetSendPatch);
+      case 'headsets.cmd.setStream':
+        return this.setStream(e.payload as StreamSendPatch);
+      case 'headsets.cmd.renameSource':
+        return this.renameSource(e.payload as RenameSource);
       case 'headsets.cmd.listOutputs':
         return this.scanOutputs();
     }
@@ -291,8 +370,8 @@ export class HeadsetService {
     if (this.headsets.length >= 16) return this.log('[headsets] no more than 16 headsets');
     const id = micIdFor(p.name, new Set(this.headsets.map((h) => h.id)), 'headset');
     // Everyone hears every source by default, their own mic included (sidetone).
-    const sends = Object.fromEntries(this.sources().map((s) => [s.key, { on: true, db: 0 }]));
-    this.headsets.push({ id, name: p.name, device: p.device, owner: p.owner, masterDb: 0, muted: false, sends });
+    const sends = Object.fromEntries(this.sources().map((s) => [s.key, { on: s.kind !== 'camera', db: 0 }]));
+    this.headsets.push({ id, name: p.name, device: p.device, owner: p.owner, masterDb: 0, muted: false, mirror: null, sends });
     // The add form wants the output list even when no headset existed at startup.
     if (!this.outputsScanned) this.scanOutputs();
     this.changed(true);
@@ -306,15 +385,54 @@ export class HeadsetService {
     if (p.owner !== undefined) h.owner = p.owner;
     if (p.masterDb !== undefined) h.masterDb = p.masterDb;
     if (p.muted !== undefined) h.muted = p.muted;
+    if (p.mirror !== undefined) {
+      if (p.mirror !== null && !this.mirrorOk(h.id, p.mirror)) {
+        return this.log(`[headsets] ${h.name} cannot follow ${p.mirror === h.id ? 'itself' : `"${p.mirror}" (unknown or a loop)`}`);
+      }
+      h.mirror = p.mirror;
+    }
     this.changed(true);
+  }
+
+  /** A mirror chain must never come back to the output being set. */
+  private mirrorOk(id: string, mirror: Mirror): boolean {
+    if (mirror !== 'stream' && !this.headsets.some((h) => h.id === mirror)) return false;
+    let cur: Mirror | null = mirror;
+    const seen = new Set<string>();
+    while (cur !== null && cur !== 'stream') {
+      if (cur === id || seen.has(cur)) return false;
+      seen.add(cur);
+      cur = this.headsets.find((h) => h.id === cur)?.mirror ?? null;
+    }
+    return true;
   }
 
   private setSend(p: HeadsetSendPatch) {
     const h = this.headsets.find((x) => x.id === p.id);
     if (!h) return;
+    if (h.mirror) return this.log(`[headsets] ${h.name} follows ${h.mirror === 'stream' ? 'the stream' : h.mirror}; unfollow it to change its mix`);
     const send = h.sends[p.source] ?? { on: true, db: 0 };
     h.sends[p.source] = { on: p.on ?? send.on, db: p.db ?? send.db };
     this.changed(true);
+  }
+
+  /** Wire a non-mic source into the stream mix (OBS track 1) or set its fader. */
+  private setStream(p: StreamSendPatch) {
+    if (p.source.startsWith('mic:')) return this.log('[headsets] mics join the stream with audio.cmd.set (stream)');
+    const input = p.source.slice('obs:'.length);
+    if (!this.audioInputs.has(input)) return this.log(`[headsets] no audio source named "${input}"`);
+    const cur = this.opts.config.streamSends[p.source] ?? this.streamState.get(input) ?? { on: true, db: 0 };
+    const next: StreamSend = { on: p.on ?? cur.on, db: p.db ?? cur.db };
+    this.opts.config.streamSends[p.source] = next;
+    this.streamState.set(input, next);
+    this.changed(true);
+  }
+
+  private renameSource(p: RenameSource) {
+    if (p.name === null) delete this.opts.config.labels[p.source];
+    else this.opts.config.labels[p.source] = p.name;
+    this.saveSoon();
+    this.publish();
   }
 
   // ---- OBS events ----
@@ -329,11 +447,37 @@ export class HeadsetService {
       audio.muted = d.inputMuted;
       this.scheduleApply();
     });
+    on<{ inputName: string; videoActive: boolean }>('InputActiveStateChanged', (d) => {
+      if (!this.audioInputs.has(d.inputName)) return;
+      if (this.liveInputs.get(d.inputName) === d.videoActive) return;
+      this.liveInputs.set(d.inputName, d.videoActive);
+      this.publish();
+    });
+    on<{ inputName: string; inputVolumeDb: number }>('InputVolumeChanged', (d) => {
+      // The audio service owns mic faders; this tracks the other sources' stream faders.
+      if (this.mics.some((m) => m.input === d.inputName) || !this.audioInputs.has(d.inputName)) return;
+      const db = dbFromObs(d.inputVolumeDb);
+      const cur = this.streamState.get(d.inputName) ?? { on: true, db: 0 };
+      if (Math.abs(cur.db - db) < 0.001) return;
+      const next = { ...cur, db };
+      this.streamState.set(d.inputName, next);
+      this.streamApplied.set(d.inputName, next);
+      const key = obsSourceKey(d.inputName);
+      if (this.opts.config.streamSends[key]) {
+        // Fader drags in OBS stick too, like they do from the matrix.
+        this.opts.config.streamSends[key]!.db = db;
+        this.saveSoon();
+      }
+      this.publish();
+    });
     on<{ inputName: string }>('InputCreated', (d) => {
       if (this.connected) this.run('new input', () => this.addInput(d.inputName));
     });
     on<{ inputName: string }>('InputRemoved', (d) => {
       if (!this.audioInputs.delete(d.inputName)) return;
+      this.liveInputs.delete(d.inputName);
+      this.streamState.delete(d.inputName);
+      this.streamApplied.delete(d.inputName);
       for (const key of [...this.applied.keys()]) if (splitKey(key).input === d.inputName) this.applied.delete(key);
       this.publish();
     });
@@ -355,6 +499,15 @@ export class HeadsetService {
     if (!audio) return;
     // Keep OBS's order: rebuild the map with the new name in the old place.
     this.audioInputs = new Map([...this.audioInputs].map(([name, a]) => [name === from ? to : name, a]));
+    const move = <T>(map: Map<string, T>) => {
+      const v = map.get(from);
+      if (v === undefined) return;
+      map.delete(from);
+      map.set(to, v);
+    };
+    move(this.liveInputs);
+    move(this.streamState);
+    move(this.streamApplied);
     for (const [key, a] of [...this.applied]) {
       const { input, headsetId } = splitKey(key);
       if (input !== from) continue;
@@ -362,11 +515,25 @@ export class HeadsetService {
       this.applied.set(filterKey(to, headsetId), a);
     }
     let moved = false;
+    const fromKey = obsSourceKey(from);
+    const toKey = obsSourceKey(to);
+    const label = this.opts.config.labels[fromKey];
+    if (label !== undefined) {
+      delete this.opts.config.labels[fromKey];
+      this.opts.config.labels[toKey] = label;
+      moved = true;
+    }
+    const stream = this.opts.config.streamSends[fromKey];
+    if (stream !== undefined) {
+      delete this.opts.config.streamSends[fromKey];
+      this.opts.config.streamSends[toKey] = stream;
+      moved = true;
+    }
     for (const h of this.headsets) {
-      const send = h.sends[obsSourceKey(from)];
+      const send = h.sends[fromKey];
       if (!send) continue;
-      delete h.sends[obsSourceKey(from)];
-      h.sends[obsSourceKey(to)] = send;
+      delete h.sends[fromKey];
+      h.sends[toKey] = send;
       moved = true;
     }
     this.changed(moved);
@@ -402,7 +569,7 @@ export class HeadsetService {
     }
   }
 
-  /** Records an input if it carries audio, and reads back any headset filters it already has. */
+  /** Records an input if it carries audio, and reads back its state and any headset filters it has. */
   private async addInput(name: string, follow = true) {
     if (!this.connected) return;
     let muted: boolean;
@@ -412,8 +579,65 @@ export class HeadsetService {
       return; // No audio (an image, a scene source) or already gone.
     }
     this.audioInputs.set(name, { muted });
+    try {
+      const { videoActive } = (await this.obs.call('GetSourceActive', { sourceName: name })) as { videoActive: boolean };
+      this.liveInputs.set(name, videoActive);
+    } catch {
+      this.liveInputs.set(name, true); // Older obs-websocket: assume live rather than warn wrongly.
+    }
+    // Mic inputs belong to the audio service; the stream column manages only the other sources.
+    if (!this.mics.some((m) => m.input === name)) {
+      let on = true;
+      let db = 0;
+      try {
+        const { inputAudioTracks } = (await this.obs.call('GetInputAudioTracks', { inputName: name })) as {
+          inputAudioTracks: Record<string, boolean>;
+        };
+        on = inputAudioTracks[String(MIX_TRACK)] ?? true;
+      } catch {
+        // Older obs-websocket: assume wired to the mix, which is OBS's default.
+      }
+      try {
+        const { inputVolumeDb } = (await this.obs.call('GetInputVolume', { inputName: name })) as { inputVolumeDb: number };
+        db = dbFromObs(inputVolumeDb);
+      } catch {
+        // No fader (should not happen for an input with audio): keep unity.
+      }
+      this.streamState.set(name, { on, db });
+      this.streamApplied.set(name, { on, db });
+    }
     await this.scanFilters(name);
     if (follow) this.changed(false);
+  }
+
+  /** Brings each non-mic input's track 1 and fader in line with the stream column of the matrix. */
+  private async applyStream() {
+    for (const input of this.audioInputs.keys()) {
+      if (this.mics.some((m) => m.input === input)) continue;
+      const want = this.opts.config.streamSends[obsSourceKey(input)] ?? this.streamState.get(input);
+      if (!want) continue;
+      const cur = this.streamApplied.get(input);
+      try {
+        if (!cur || cur.on !== want.on) {
+          // Read-modify-write: only track 1 (the stream mix) changes, everything else is preserved.
+          const { inputAudioTracks } = (await this.obs.call('GetInputAudioTracks', { inputName: input })) as {
+            inputAudioTracks: Record<string, boolean>;
+          };
+          if ((inputAudioTracks[String(MIX_TRACK)] ?? true) !== want.on) {
+            await this.obs.call('SetInputAudioTracks', {
+              inputName: input,
+              inputAudioTracks: { ...inputAudioTracks, [String(MIX_TRACK)]: want.on },
+            });
+          }
+        }
+        if (!cur || Math.abs(cur.db - want.db) > DB_EPSILON) {
+          await this.obs.call('SetInputVolume', { inputName: input, inputVolumeDb: want.db });
+        }
+        this.streamApplied.set(input, { ...want });
+      } catch (err) {
+        this.log(`[headsets] could not wire "${input}" to the stream: ${describeError(err)}`);
+      }
+    }
   }
 
   private async scanFilters(input: string) {
@@ -452,13 +676,17 @@ export class HeadsetService {
 
   /** Brings OBS in line with the config, touching only what differs from what was last written. */
   private async apply() {
-    if (!this.connected || this.plugin === false) return;
+    if (!this.connected) return;
+    // The stream column works without the Audio Monitor plugin, so it runs before the plugin check.
+    await this.applyStream();
+    if (this.plugin === false) return;
+    const sendsByOutput = new Map(this.headsets.map((h) => [h.id, this.effectiveSends(h)]));
     const desired = new Map<string, { input: string; headset: HeadsetConfig; enabled: boolean; volume: number }>();
     for (const source of this.sources()) {
       const from = this.resolve(source.key);
       if (!from) continue;
       for (const headset of this.headsets) {
-        const send = headset.sends[source.key];
+        const send = sendsByOutput.get(headset.id)![source.key];
         if (!send) continue;
         desired.set(filterKey(from.input, headset.id), {
           input: from.input,

@@ -23,6 +23,7 @@ const mic = (id: string, input: string, over: Partial<MicState> = {}): MicState 
   track: 2,
   status: 'ok',
   live: true,
+  onStream: true,
   volumeDb: 0,
   muted: false,
   monitor: 'off',
@@ -49,7 +50,7 @@ beforeEach(() => {
   obs.inputs.set('Music', makeInput({ kind: 'ffmpeg_source' }));
   saved = [];
   logs = [];
-  config = { headsets: [] };
+  config = { headsets: [], labels: {}, streamSends: {} };
   publishAudio([mic('host', 'Host mic'), mic('guest', 'Guest mic')]);
   timer = new FakeTimer();
   svc = new HeadsetService({
@@ -58,6 +59,7 @@ beforeEach(() => {
     config,
     save: async (c) => void saved.push(structuredClone(c)),
     listOutputs: async () => ({ outputs: ['MacBook Pro Speakers', 'USB Audio'] }),
+    cameras: [{ name: 'Sony A6400', source: 'Sony cam' }],
     timer,
     log: (m) => logs.push(m),
   });
@@ -107,9 +109,9 @@ describe('HeadsetService', () => {
     };
     await connect();
     expect(state().sources).toEqual([
-      { key: 'mic:host', name: 'Host', kind: 'mic' },
-      { key: 'mic:guest', name: 'Guest', kind: 'mic' },
-      { key: 'obs:Music', name: 'Music', kind: 'obs' },
+      { key: 'mic:host', name: 'Host', kind: 'mic', detail: 'Host mic', live: true },
+      { key: 'mic:guest', name: 'Guest', kind: 'mic', detail: 'Guest mic', live: true },
+      { key: 'obs:Music', name: 'Music', kind: 'obs', live: true },
     ]);
     expect(state().plugin).toBe(true);
   });
@@ -293,5 +295,100 @@ describe('HeadsetService', () => {
   it('lists outputs again on request', async () => {
     await send('headsets.cmd.listOutputs', {});
     expect(state().outputs).toContain('USB Audio');
+  });
+
+  it('labels camera audio with the camera name, and it joins outputs switched off', async () => {
+    obs.inputs.set('Sony cam', makeInput());
+    await connect();
+    await addCohost();
+    expect(state().sources.find((s) => s.kind === 'camera')).toEqual({
+      key: 'obs:Sony cam',
+      name: 'Sony A6400',
+      kind: 'camera',
+      detail: 'Sony cam',
+      live: true,
+    });
+    expect(headset('cohost').sends['obs:Sony cam']).toEqual({ on: false, db: 0 });
+  });
+
+  it('marks a camera source silent while it is off-screen', async () => {
+    obs.inputs.set('Sony cam', makeInput());
+    await connect();
+    expect(state().sources.find((s) => s.kind === 'camera')!.live).toBe(true);
+    obs.inputs.get('Sony cam')!.active = false;
+    obs.emit('InputActiveStateChanged', { inputName: 'Sony cam', videoActive: false });
+    await svc.idle();
+    expect(state().sources.find((s) => s.kind === 'camera')!.live).toBe(false);
+  });
+
+  it('wires an OBS source into the stream on track 1, keeping its other tracks', async () => {
+    await connect();
+    const music = obs.inputs.get('Music')!;
+    music.tracks = { '1': true, '2': false, '3': true, '4': false, '5': false, '6': false };
+    music.volumeDb = -4;
+    await send('headsets.cmd.setStream', { source: 'obs:Music', on: false, db: -12 });
+    expect(music.tracks).toEqual({ '1': false, '2': false, '3': true, '4': false, '5': false, '6': false });
+    expect(music.volumeDb).toBe(-12);
+    expect(state().stream['obs:Music']).toEqual({ on: false, db: -12 });
+    flushSaves();
+    expect(saved.at(-1)!.streamSends['obs:Music']).toEqual({ on: false, db: -12 });
+  });
+
+  it('follows fader changes made in OBS for wired sources', async () => {
+    await connect();
+    await send('headsets.cmd.setStream', { source: 'obs:Music', db: -6 });
+    obs.inputs.get('Music')!.volumeDb = -10;
+    obs.emit('InputVolumeChanged', { inputName: 'Music', inputVolumeDb: -10 });
+    expect(state().stream['obs:Music']!.db).toBe(-10);
+    flushSaves();
+    expect(saved.at(-1)!.streamSends['obs:Music']).toEqual({ on: true, db: -10 });
+  });
+
+  it('shows mic stream wiring from the audio state', async () => {
+    await connect();
+    expect(state().stream['mic:host']).toEqual({ on: true, db: 0 });
+    publishAudio([mic('host', 'Host mic', { onStream: false, volumeDb: -6 }), mic('guest', 'Guest mic')]);
+    await svc.idle();
+    expect(state().stream['mic:host']).toEqual({ on: false, db: -6 });
+  });
+
+  it('mirrors the stream into an output and follows rewiring', async () => {
+    await connect();
+    await addCohost();
+    await send('headsets.cmd.update', { id: 'cohost', mirror: 'stream' });
+    expect(headset('cohost').mirror).toBe('stream');
+    expect(headset('cohost').sends['obs:Music']).toEqual({ on: true, db: 0 });
+    await send('headsets.cmd.setStream', { source: 'obs:Music', on: false });
+    expect(headset('cohost').sends['obs:Music']).toEqual({ on: false, db: 0 });
+    // Its own sends are refused while it follows the stream.
+    await send('headsets.cmd.setSend', { id: 'cohost', source: 'obs:Music', on: true });
+    expect(headset('cohost').sends['obs:Music']!.on).toBe(false);
+    expect(logs.some((l) => l.includes('unfollow'))).toBe(true);
+  });
+
+  it('mirrors another output and rejects loops', async () => {
+    await connect();
+    await addCohost();
+    await send('headsets.cmd.add', { name: 'AirPods', device: 'USB Audio' });
+    await send('headsets.cmd.setSend', { id: 'cohost', source: 'obs:Music', on: false });
+    await send('headsets.cmd.update', { id: 'airpods', mirror: 'cohost' });
+    expect(headset('airpods').sends['obs:Music']).toEqual({ on: false, db: 0 });
+    await send('headsets.cmd.update', { id: 'cohost', mirror: 'airpods' });
+    expect(headset('cohost').mirror).toBeNull();
+    expect(logs.some((l) => l.includes('loop'))).toBe(true);
+  });
+
+  it('renames a source with a label that survives OBS renames, and clears it', async () => {
+    await connect();
+    await send('headsets.cmd.renameSource', { source: 'obs:Music', name: 'Walk-in playlist' });
+    expect(state().labels['obs:Music']).toBe('Walk-in playlist');
+    const music = obs.inputs.get('Music')!;
+    obs.inputs.delete('Music');
+    obs.inputs.set('Playlist', music);
+    obs.emit('InputNameChanged', { oldInputName: 'Music', inputName: 'Playlist' });
+    await svc.idle();
+    expect(state().labels['obs:Playlist']).toBe('Walk-in playlist');
+    await send('headsets.cmd.renameSource', { source: 'obs:Playlist', name: null });
+    expect(state().labels['obs:Playlist']).toBeUndefined();
   });
 });

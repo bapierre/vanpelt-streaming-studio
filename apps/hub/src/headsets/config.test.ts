@@ -15,11 +15,22 @@ afterEach(async () => {
 describe('headsets config', () => {
   it('starts empty without a file and round-trips what it saves', async () => {
     const path = join(dir, '.streamhub/headsets.json');
-    expect(await loadHeadsetsConfig(path)).toEqual({ headsets: [] });
+    expect(await loadHeadsetsConfig(path)).toEqual({ headsets: [], labels: {}, streamSends: {} });
     const cfg: HeadsetsConfig = {
       headsets: [
-        { id: 'cohost', name: 'Co-host', device: 'USB Audio', owner: 'cohost', masterDb: -6, muted: false, sends: { 'mic:host': { on: true, db: -3 } } },
+        {
+          id: 'cohost',
+          name: 'Co-host',
+          device: 'USB Audio',
+          owner: 'cohost',
+          masterDb: -6,
+          muted: false,
+          mirror: null,
+          sends: { 'mic:host': { on: true, db: -3 } },
+        },
       ],
+      labels: { 'obs:Music': 'Walk-in playlist' },
+      streamSends: { 'obs:Music': { on: true, db: -6 } },
     };
     await saveHeadsetsConfig(path, cfg);
     expect(await loadHeadsetsConfig(path)).toEqual(cfg);
@@ -36,6 +47,7 @@ describe('headsets config', () => {
       owner: null,
       masterDb: 0,
       muted: false,
+      mirror: null,
       sends: {},
     });
   });
@@ -45,7 +57,7 @@ describe('headsets config', () => {
     const logs: string[] = [];
     const h = { id: 'a', name: 'A', device: 'X' };
     await writeFile(path, JSON.stringify({ headsets: [h, h] }));
-    expect(await loadHeadsetsConfig(path, (m) => logs.push(m))).toEqual({ headsets: [] });
+    expect(await loadHeadsetsConfig(path, (m) => logs.push(m))).toEqual({ headsets: [], labels: {}, streamSends: {} });
     expect(logs[0]).toMatch(/unique/);
   });
 });
