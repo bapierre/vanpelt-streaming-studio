@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GoalState, ModulesList } from '@streamhub/shared';
-import { goalId, GoalsPanel, type GoalActions } from './GoalsPanel';
+import { goalId, GoalsPanel, MAX_GOALS, type GoalActions, type GoalFormSel } from './GoalsPanel';
 
 afterEach(cleanup);
 
@@ -35,6 +35,7 @@ const followers: GoalState = {
   platforms: ['twitch', 'youtube'],
   current: 4200,
   approximate: true,
+  detail: 'No follower count from Twitch yet.',
 };
 const tips: GoalState = {
   id: 'tips',
@@ -51,6 +52,13 @@ function actions(): GoalActions & Record<string, ReturnType<typeof vi.fn>> {
   return { onSave: vi.fn(), onRemove: vi.fn(), onReset: vi.fn() };
 }
 
+const goalProps = (form: GoalFormSel | null, onForm = vi.fn()) => ({
+  modules,
+  disabled: false,
+  form,
+  onForm,
+});
+
 describe('goalId', () => {
   it('slugs the label and avoids taken ids', () => {
     expect(goalId('Road to 100 Followers!', [])).toBe('road-to-100-followers');
@@ -60,25 +68,25 @@ describe('goalId', () => {
 });
 
 describe('GoalsPanel', () => {
-  it('shows each goal with its progress and its own OBS URL', () => {
-    render(
-      <GoalsPanel
-        goals={[followers, tips]}
-        modules={modules}
-        disabled={false}
-        actions={actions()}
-      />,
-    );
+  it('shows each goal with its progress, pill and a Copy link for its OBS URL', () => {
+    render(<GoalsPanel goals={[followers, tips]} {...goalProps(null)} actions={actions()} />);
     const f = within(screen.getByTestId('goal-followers'));
-    expect(f.getByText('~4,200 / 5,000')).toBeTruthy();
-    expect(f.getByText('http://127.0.0.1:4747/m/alerts/goal.html?goal=followers')).toBeTruthy();
+    expect(f.getByText(/~4,200 of 5,000/)).toBeTruthy();
+    expect(f.getByText(/Twitch and YouTube/)).toBeTruthy();
+    expect(f.getByText(/No follower count from Twitch yet/)).toBeTruthy();
+    expect(f.getByText('Followers · Channel total')).toBeTruthy();
+    const copy = f.getByRole('button', { name: 'Copy link' }) as HTMLButtonElement;
+    expect(copy.title).toBe('http://127.0.0.1:4747/m/alerts/goal.html?goal=followers');
     expect(f.queryByRole('button', { name: 'Reset' })).toBeNull();
-    expect(within(screen.getByTestId('goal-tips')).getByText('$45.50 / $200')).toBeTruthy();
+    const t = within(screen.getByTestId('goal-tips'));
+    expect(t.getByText(/\$45\.50 of \$200/)).toBeTruthy();
+    expect(t.getByText('Tips · This stream')).toBeTruthy();
+    expect(t.getByRole('button', { name: 'Reset' })).toBeTruthy();
   });
 
-  it('adds a tips goal with a currency and a unique id', () => {
+  it('adds a tips goal with a currency and a unique id, and stays open for the next', () => {
     const a = actions();
-    render(<GoalsPanel goals={[tips]} modules={modules} disabled={false} actions={a} />);
+    render(<GoalsPanel goals={[tips]} {...goalProps({ mode: 'new' })} actions={a} />);
     const form = within(screen.getByRole('form', { name: 'New goal' }));
     const add = form.getByRole('button', { name: 'Add goal' }) as HTMLButtonElement;
     expect(add.disabled).toBe(true);
@@ -100,10 +108,11 @@ describe('GoalsPanel', () => {
       currency: 'EUR',
       platforms: ['youtube'],
     });
+    expect(screen.getByRole('form', { name: 'New goal' })).toBeTruthy();
   });
 
   it('needs a platform and a valid currency', () => {
-    render(<GoalsPanel goals={[]} modules={modules} disabled={false} actions={actions()} />);
+    render(<GoalsPanel goals={[]} {...goalProps({ mode: 'new' })} actions={actions()} />);
     const form = within(screen.getByRole('form', { name: 'New goal' }));
     fireEvent.change(form.getByLabelText('Name'), { target: { value: 'Fund' } });
     fireEvent.change(form.getByLabelText('Counts'), { target: { value: 'tips' } });
@@ -118,9 +127,22 @@ describe('GoalsPanel', () => {
     );
   });
 
+  it('closes the new goal form, and says when there are none yet', () => {
+    const onForm = vi.fn();
+    render(<GoalsPanel goals={[]} {...goalProps({ mode: 'new' }, onForm)} actions={actions()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onForm).toHaveBeenCalledWith(null);
+    cleanup();
+    render(<GoalsPanel goals={[]} {...goalProps(null, onForm)} actions={actions()} />);
+    expect(screen.getByText('No goals yet.')).toBeTruthy();
+    expect(screen.queryByRole('form')).toBeNull();
+  });
+
   it('edits, resets and removes a goal, and warns when an edit restarts the count', () => {
     const a = actions();
-    render(<GoalsPanel goals={[followers, tips]} modules={modules} disabled={false} actions={a} />);
+    const onForm = vi.fn();
+    const props = { goals: [followers, tips] as GoalState[] };
+    const { rerender } = render(<GoalsPanel {...props} {...goalProps(null, onForm)} actions={a} />);
     const t = within(screen.getByTestId('goal-tips'));
     fireEvent.click(t.getByRole('button', { name: 'Reset' }));
     expect(a.onReset).toHaveBeenCalledWith('tips');
@@ -131,6 +153,18 @@ describe('GoalsPanel', () => {
 
     fireEvent.click(
       within(screen.getByTestId('goal-followers')).getByRole('button', { name: 'Edit' }),
+    );
+    expect(onForm).toHaveBeenCalledWith({ mode: 'edit', id: 'followers' });
+
+    rerender(
+      <GoalsPanel
+        {...props}
+        modules={modules}
+        disabled={false}
+        actions={a}
+        form={{ mode: 'edit', id: 'followers' }}
+        onForm={onForm}
+      />,
     );
     const form = within(screen.getByRole('form', { name: 'Edit Follower goal' }));
     fireEvent.change(form.getByLabelText('Target'), { target: { value: '6000' } });
@@ -146,6 +180,16 @@ describe('GoalsPanel', () => {
       target: 6000,
       platforms: ['twitch', 'youtube'],
     });
-    expect(screen.getByRole('form', { name: 'New goal' })).toBeTruthy();
+    expect(onForm).toHaveBeenCalledWith(null);
+  });
+
+  it('stops at the most goals allowed', () => {
+    const many = Array.from({ length: MAX_GOALS }, (_, i): GoalState => ({
+      ...tips,
+      id: `g${i}`,
+      label: `G${i}`,
+    }));
+    render(<GoalsPanel goals={many} {...goalProps(null)} actions={actions()} />);
+    expect(screen.getByText(new RegExp(`most goals allowed \\(${MAX_GOALS}\\)`))).toBeTruthy();
   });
 });

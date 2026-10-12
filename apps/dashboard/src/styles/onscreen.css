@@ -1,1 +1,297 @@
 /* On screen tab (alerts and goals); the page layout is .split in styles.css */
+
+/* Notices and stacked blocks inside this tab's cards. */
+.onscreen-panel > * + * {
+  border-top: 0.5px solid var(--separator);
+}
+.onscreen-panel .notice {
+  margin: 0;
+  padding: 12px 16px;
+}
+.split-inner > .notice {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Pause alerts, in the page head. */
+.pause-button {
+  font-weight: 600;
+}
+.pause-button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.pause-button[aria-pressed='true']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  filter: none;
+}
+
+/* The overlay link card. */
+.overlay-url {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  flex-wrap: wrap;
+}
+.overlay-url > strong {
+  flex: none;
+}
+.overlay-url > code {
+  flex: 1;
+  min-width: 220px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--fill);
+  color: var(--secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overlay-help {
+  margin: 0;
+  padding: 0 16px 14px;
+}
+
+/* Alert kinds. Each kind gets the same accent the overlay uses. */
+.kind {
+  --kind: var(--accent);
+}
+.kind-follow {
+  --kind: #0a84ff;
+}
+.kind-sub,
+.kind-resub {
+  --kind: #bf5af2;
+}
+.kind-giftsub {
+  --kind: #ff375f;
+}
+.kind-cheer {
+  --kind: #ff9f0a;
+}
+.kind-tip {
+  --kind: #30d158;
+}
+.kind-raid {
+  --kind: #ff453a;
+}
+
+.kind-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+}
+.kind-ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--kind) 15%, transparent);
+  color: var(--kind);
+}
+.kind-name {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.kind-name strong {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kind-summary {
+  color: var(--secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kind.off .kind-ico {
+  opacity: 0.45;
+}
+.kind.off .kind-name strong {
+  color: var(--secondary);
+}
+.kind.off .kind-summary {
+  color: var(--tertiary);
+}
+
+.chevron {
+  background: transparent;
+  color: var(--tertiary);
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.chevron:hover:not(:disabled) {
+  background: var(--fill);
+  color: var(--label);
+}
+.chevron svg {
+  transition: transform 0.15s ease;
+}
+.kind.open .chevron svg {
+  transform: rotate(180deg);
+}
+
+/* The expanded kind: its settings next to a preview of the pop-up. */
+.kind-expand {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(230px, 1fr);
+  gap: 14px 18px;
+  padding: 14px 16px 16px 60px;
+  background: var(--surface-alt);
+}
+@media (max-width: 760px) {
+  .kind-expand {
+    grid-template-columns: 1fr;
+    padding-left: 16px;
+  }
+}
+.kind-settings {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+/* A CSS imitation of the overlay pop-up. The overlay page itself is dark on
+   stream whatever the dashboard theme, so these colors are fixed to match
+   modules/alerts/src/styles.css rather than theme variables. */
+.kind-preview {
+  border-radius: 10px;
+  background: linear-gradient(160deg, #2c2c34, #15151a);
+  display: grid;
+  place-items: center;
+  padding: 22px 14px;
+  min-height: 160px;
+}
+.os-popup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  padding: 10px 14px 10px 10px;
+  border-radius: 16px;
+  background: rgba(22, 22, 28, 0.88);
+  color: #fff;
+  box-shadow:
+    0 0 0 2px var(--kind),
+    0 10px 26px rgba(0, 0, 0, 0.45);
+}
+.os-popup .avatar {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--kind);
+  font-size: 19px;
+  font-weight: 700;
+}
+.os-popup .popup-body {
+  min-width: 0;
+}
+.os-popup-kind {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kind);
+  filter: brightness(1.3);
+}
+.os-popup-text {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* Recent alerts. */
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  min-height: 40px;
+}
+.recent-row > .badge {
+  flex: none;
+}
+.recent-time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.recent-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Goals. */
+.goal-block {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+}
+.goal-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.goal-row > .pill,
+.goal-row > button {
+  flex: none;
+}
+.goal-title {
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.goal-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--fill-strong);
+  overflow: hidden;
+}
+.goal-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+.goal-meta {
+  min-width: 0;
+}
+.goal-edit {
+  border-top: 0.5px solid var(--separator);
+  padding-top: 12px;
+  margin-top: 2px;
+}
+.goal-form {
+  display: grid;
+  gap: 10px;
+}

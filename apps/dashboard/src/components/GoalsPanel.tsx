@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import type { GoalInput, GoalMetric, GoalScope, GoalState, ModulesList } from '@streamhub/shared';
-import { alertsModule, ModuleNotice, OverlayUrl } from './AlertsPanel';
+import { alertsModule, CopyLink, ModuleNotice } from './AlertsPanel';
+import { Panel, Pill } from './ui';
 
-type GoalPlatform = 'twitch' | 'youtube';
+type GoalPlatform = 'twitch' | 'youtube' | 'kick';
 
 const METRIC_LABELS: Record<GoalMetric, string> = {
   followers: 'Followers',
@@ -13,13 +14,17 @@ const PLATFORMS: Array<{ id: GoalPlatform; label: string }> = [
   { id: 'twitch', label: 'Twitch' },
   { id: 'youtube', label: 'YouTube' },
 ];
-const MAX_GOALS = 20;
+export const MAX_GOALS = 20;
 /** Platforms with no money alerts: Twitch bits are cheers, not tips. */
 const NO_TIPS: GoalPlatform[] = ['twitch'];
 
 export function scopeLabel(metric: GoalMetric, scope: GoalScope): string {
   if (scope === 'stream') return 'This stream';
   return metric === 'tips' ? 'Since the goal was made' : 'Channel total';
+}
+
+function platformName(p: string): string {
+  return p === 'youtube' ? 'YouTube' : p === 'twitch' ? 'Twitch' : 'Kick';
 }
 
 /** A short, unique id for a new goal, made from its label. */
@@ -51,6 +56,11 @@ export function formatValue(goal: Pick<GoalState, 'metric' | 'currency'>, value:
   return Math.floor(value).toLocaleString('en-US');
 }
 
+/** The "N of M" progress line under a goal bar. */
+export function goalProgress(goal: GoalState): string {
+  return `${goal.approximate ? '~' : ''}${formatValue(goal, goal.current)} of ${formatValue(goal, goal.target)}`;
+}
+
 type Draft = {
   label: string;
   metric: GoalMetric;
@@ -76,7 +86,9 @@ function draftOf(goal: GoalState): Draft {
     scope: goal.scope,
     target: String(goal.target),
     currency: goal.currency ?? 'USD',
-    platforms: goal.platforms.filter((p): p is GoalPlatform => p === 'twitch' || p === 'youtube'),
+    platforms: goal.platforms.filter((p): p is GoalPlatform =>
+      (PLATFORMS.map((x) => x.id) as string[]).includes(p),
+    ),
   };
 }
 
@@ -130,7 +142,7 @@ function GoalForm({
 
   return (
     <form
-      className="group-row form"
+      className="goal-form"
       aria-label={editing ? `Edit ${editing.label}` : 'New goal'}
       onSubmit={submit}
     >
@@ -228,11 +240,9 @@ function GoalForm({
       )}
       <div className="form-actions">
         {problem && d.label && <span className="small muted">{problem}</span>}
-        {editing && (
-          <button type="button" className="link" onClick={onCancel}>
-            Cancel
-          </button>
-        )}
+        <button type="button" className="link" onClick={onCancel}>
+          {editing ? 'Cancel' : 'Close'}
+        </button>
         <button type="submit" disabled={disabled || problem !== null}>
           {editing ? 'Save' : 'Add goal'}
         </button>
@@ -247,115 +257,146 @@ export type GoalActions = {
   onReset: (id: string) => void;
 };
 
+/** Which goal form is open, if any. The tab owns this so "+ New goal" can live in the page head. */
+export type GoalFormSel = { mode: 'new' } | { mode: 'edit'; id: string };
+
+function GoalBlock({
+  goal,
+  overlay,
+  off,
+  editing,
+  actions,
+  onForm,
+}: {
+  goal: GoalState;
+  overlay: { url: string } | null;
+  off: boolean;
+  editing: boolean;
+  actions: GoalActions;
+  onForm: (form: GoalFormSel | null) => void;
+}) {
+  const url = overlay ? `${overlay.url}?goal=${goal.id}` : null;
+  const pct = Math.min(100, (goal.current / goal.target) * 100);
+  return (
+    <div className="goal-block" data-testid={`goal-${goal.id}`}>
+      <div className="goal-row">
+        <strong className="goal-title">{goal.label}</strong>
+        <Pill tone="off">
+          {METRIC_LABELS[goal.metric]} · {scopeLabel(goal.metric, goal.scope)}
+        </Pill>
+        <span className="spacer" />
+        {url && <CopyLink url={url} />}
+        {(goal.scope === 'stream' || goal.metric === 'tips') && (
+          <button
+            type="button"
+            className="sm"
+            disabled={off}
+            onClick={() => actions.onReset(goal.id)}
+          >
+            Reset
+          </button>
+        )}
+        <button
+          type="button"
+          className="ghost sm"
+          disabled={off}
+          onClick={() => onForm({ mode: 'edit', id: goal.id })}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          className="link"
+          disabled={off}
+          onClick={() => actions.onRemove(goal.id)}
+        >
+          Remove
+        </button>
+      </div>
+      <div
+        className="goal-bar"
+        role="progressbar"
+        aria-label={goal.label}
+        aria-valuemin={0}
+        aria-valuemax={goal.target}
+        aria-valuenow={goal.current}
+      >
+        <i style={{ width: `${pct}%` }} />
+      </div>
+      <span className="goal-meta small muted">
+        {goalProgress(goal)} · {goal.platforms.map(platformName).join(' and ')}
+        {goal.detail ? ` · ${goal.detail}` : ''}
+      </span>
+      {editing && (
+        <div className="goal-edit">
+          <GoalForm
+            editing={goal}
+            taken={[]}
+            disabled={off}
+            onSave={(g) => {
+              actions.onSave(g);
+              onForm(null);
+            }}
+            onCancel={() => onForm(null)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GoalsPanel({
   goals,
   modules,
   disabled,
   actions,
+  form,
+  onForm,
 }: {
   goals: GoalState[] | null;
   modules: ModulesList | null;
   disabled: boolean;
   actions: GoalActions;
+  form: GoalFormSel | null;
+  onForm: (form: GoalFormSel | null) => void;
 }) {
-  const [editing, setEditing] = useState<string | null>(null);
   const overlay = alertsModule(modules)?.overlays.find((o) => o.id === 'goal');
-  const editingGoal = goals?.find((g) => g.id === editing) ?? null;
   const off = disabled || !goals;
+  const editing = form?.mode === 'edit' ? form.id : null;
+  const newOpen = form?.mode === 'new' && !!goals;
+  const maxed = (goals?.length ?? 0) >= MAX_GOALS;
   return (
     <>
-      <p className="muted small">
-        Each goal has its own bar. Add one Browser Source per goal in OBS with the URL next to it.
-      </p>
       <ModuleNotice modules={modules} />
-      {goals && goals.length > 0 && (
-        <section className="group">
-          {goals.map((g) => (
-            <div key={g.id} className="group-row form" data-testid={`goal-${g.id}`}>
-              <div className="destination-head">
-                <strong>{g.label}</strong>
-                <span className="small muted">
-                  {g.approximate ? '~' : ''}
-                  {formatValue(g, g.current)} / {formatValue(g, g.target)}
-                </span>
-                <span className="spacer" />
-                {(g.scope === 'stream' || g.metric === 'tips') && (
-                  <button type="button" disabled={off} onClick={() => actions.onReset(g.id)}>
-                    Reset
-                  </button>
-                )}
-                <button type="button" disabled={off} onClick={() => setEditing(g.id)}>
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="link"
-                  disabled={off}
-                  onClick={() => actions.onRemove(g.id)}
-                >
-                  Remove
-                </button>
-              </div>
-              <div
-                className="meter"
-                role="progressbar"
-                aria-label={g.label}
-                aria-valuemin={0}
-                aria-valuemax={g.target}
-                aria-valuenow={g.current}
-              >
-                <div
-                  className="meter-fill"
-                  style={{ width: `${Math.min(100, (g.current / g.target) * 100)}%` }}
-                />
-              </div>
-              <span className="small muted">
-                {METRIC_LABELS[g.metric]} · {scopeLabel(g.metric, g.scope)} ·{' '}
-                {g.platforms
-                  .map((p) => (p === 'youtube' ? 'YouTube' : p === 'twitch' ? 'Twitch' : 'Kick'))
-                  .join(' and ')}
-                {g.detail ? ` · ${g.detail}` : ''}
-              </span>
-              {overlay && (
-                <OverlayUrl
-                  name={`${g.label} bar`}
-                  url={`${overlay.url}?goal=${g.id}`}
-                  width={overlay.width}
-                  height={overlay.height}
-                />
-              )}
-            </div>
-          ))}
-        </section>
+      {maxed && (
+        <p className="notice muted small">
+          You have the most goals allowed ({MAX_GOALS}). Remove one to add another.
+        </p>
       )}
-      {goals && goals.length === 0 && <p className="muted small">No goals yet.</p>}
-      {!goals && <p className="muted small">Waiting for the hub.</p>}
-      <section className="group">
-        {editingGoal ? (
-          <GoalForm
-            key={editingGoal.id}
-            editing={editingGoal}
-            taken={[]}
-            disabled={off}
-            onSave={(g) => {
-              actions.onSave(g);
-              setEditing(null);
-            }}
-            onCancel={() => setEditing(null)}
+      <Panel label="Your goals" className="onscreen-panel">
+        {goals?.map((g) => (
+          <GoalBlock
+            key={g.id}
+            goal={g}
+            overlay={overlay ? { url: overlay.url } : null}
+            off={off}
+            editing={editing === g.id}
+            actions={actions}
+            onForm={onForm}
           />
-        ) : (goals?.length ?? 0) < MAX_GOALS ? (
+        ))}
+        {goals?.length === 0 && !newOpen && <p className="notice muted small">No goals yet.</p>}
+        {newOpen && (
           <GoalForm
-            key="new"
             editing={null}
-            taken={goals?.map((g) => g.id) ?? []}
+            taken={goals.map((g) => g.id)}
             disabled={off}
             onSave={actions.onSave}
-            onCancel={() => {}}
+            onCancel={() => onForm(null)}
           />
-        ) : (
-          <p className="group-row small muted">You have the most goals allowed ({MAX_GOALS}).</p>
         )}
-      </section>
+      </Panel>
+      {!goals && <p className="muted small">Waiting for the hub.</p>}
     </>
   );
 }
