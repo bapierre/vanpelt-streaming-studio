@@ -84,7 +84,7 @@ export function SetupOverview({
         {steps.map((step, i) => (
           <div key={step.id} className={`setup-step ${step.done ? 'done' : ''} ${step.id === next?.id ? 'next' : ''}`}>
             <span className={`setup-check ${step.done ? 'done' : step.id === next?.id ? 'next' : 'todo'}`}>
-              {step.done ? '✓' : step.id === next?.id ? null : i + 1}
+              {step.done ? '✓' : i + 1}
             </span>
             <div className="setup-step-text">
               <h4>{step.title}</h4>
