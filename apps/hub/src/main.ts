@@ -27,6 +27,7 @@ import { XConnector } from './connectors/x/connector';
 import { DestinationsService } from './destinations/service';
 import { loadHeadsetsConfig, saveHeadsetsConfig } from './headsets/config';
 import { listOutputDevices } from './headsets/outputs';
+import { installAudioMonitor } from './headsets/plugin';
 import { HeadsetService } from './headsets/service';
 import { ModuleHost } from './modules/host';
 import { ObsBridge, type ObsClient } from './obs/bridge';
@@ -117,12 +118,15 @@ const audio = new AudioService({
   config: await loadAudioConfig(paths.audio),
   save: (c) => saveAudioConfig(paths.audio, c),
 });
+// The desktop app bundles the Audio Monitor plugin and points the hub at it; a bare hub skips this.
+const pluginInstall = await installAudioMonitor({ resourceDir: process.env.STREAMHUB_AUDIO_MONITOR_DIR });
 const headsets = new HeadsetService({
   bus,
   obs,
   config: await loadHeadsetsConfig(paths.headsets),
   save: (c) => saveHeadsetsConfig(paths.headsets, c),
   listOutputs: () => listOutputDevices(),
+  pluginInstalled: pluginInstall === 'installed' || pluginInstall === 'current' || pluginInstall === 'user-install',
   cameras: cameraConfigs.map((c) => ({ name: c.name, source: c.source })),
 });
 const recording = new RecordingService({ bus, obs, cameras: cameraConfigs });

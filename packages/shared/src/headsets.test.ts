@@ -15,6 +15,7 @@ const headset = {
 };
 const state = {
   plugin: true,
+  pluginPending: false,
   outputs: ['MacBook Pro Speakers', 'USB Audio Device'],
   sources: [
     { key: 'mic:host', name: 'Host', kind: 'mic', live: true },

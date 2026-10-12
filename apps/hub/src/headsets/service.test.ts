@@ -249,8 +249,29 @@ describe('HeadsetService', () => {
     await connect();
     await addCohost();
     expect(state().plugin).toBe(false);
+    expect(state().pluginPending).toBe(false);
     expect(headset('cohost')).toMatchObject({ status: 'no-plugin', detail: expect.stringContaining('Audio Monitor') });
     expect(obs.callsOf('CreateSourceFilter')).toEqual([]);
+  });
+
+  it('says the plugin is pending when it is installed on disk but OBS has not loaded it', async () => {
+    obs.filterKinds = obs.filterKinds.filter((k) => k !== 'audio_monitor');
+    svc.stop();
+    svc = new HeadsetService({
+      bus,
+      obs,
+      config,
+      save: async (c) => void saved.push(structuredClone(c)),
+      listOutputs: async () => ({ outputs: ['MacBook Pro Speakers', 'USB Audio'] }),
+      cameras: [{ name: 'Sony A6400', source: 'Sony cam' }],
+      timer,
+      log: (m) => logs.push(m),
+      pluginInstalled: true,
+    });
+    svc.start();
+    await connect();
+    expect(state().plugin).toBe(false);
+    expect(state().pluginPending).toBe(true);
   });
 
   it('flags a headset whose output is not plugged in', async () => {

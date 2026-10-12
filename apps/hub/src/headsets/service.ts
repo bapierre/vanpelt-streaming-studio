@@ -44,6 +44,8 @@ export type HeadsetServiceOptions = {
   config: HeadsetsConfig;
   save: (cfg: HeadsetsConfig) => Promise<void>;
   listOutputs: () => Promise<OutputList>;
+  /** Audio Monitor is installed on disk (bundled or by hand); when OBS has not loaded it, the state says pending. */
+  pluginInstalled?: boolean;
   /** Cameras from the config file; their OBS sources become `camera` sources in the matrix. */
   cameras?: Array<{ name: string; source: string }>;
   timer?: Timer;
@@ -238,6 +240,7 @@ export class HeadsetService {
     const status = this.status();
     return {
       plugin: this.plugin,
+      pluginPending: this.plugin === false && this.opts.pluginInstalled === true,
       outputs: this.outputs.outputs,
       ...(this.outputs.detail ? { outputsDetail: this.outputs.detail } : {}),
       sources: this.sources(),

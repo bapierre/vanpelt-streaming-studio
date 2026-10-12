@@ -422,7 +422,13 @@ export function HeadsetMatrix({
           Each person gets their own mix in their own headset. Levels go up to 0 dB; to make a headset louder overall,
           raise its master level or the headphone volume.
         </p>
-        {noPlugin && (
+        {noPlugin && state.pluginPending && (
+          <p className="small conn-error" role="alert">
+            The Audio Monitor plugin is installed; restart OBS to activate headset mixes. The Stream column already
+            works.
+          </p>
+        )}
+        {noPlugin && !state.pluginPending && (
           <p className="small conn-error" role="alert">
             Headset mixes need the Audio Monitor plugin in OBS. The Stream column works without it.{' '}
             <a href={AUDIO_MONITOR_URL} target="_blank" rel="noreferrer">

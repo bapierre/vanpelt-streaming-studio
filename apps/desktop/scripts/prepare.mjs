@@ -46,6 +46,8 @@ await copyFile(
 );
 await copyFile(process.execPath, nodeBinary);
 await chmod(nodeBinary, 0o755);
+// The Audio Monitor plugin ships inside the app, so first run can install it into OBS.
+execFileSync(process.execPath, [join(desktop, 'scripts/fetch-audio-monitor.mjs')], { stdio: 'inherit' });
 console.log(
   `Prepared desktop resources for ${target}. Node ${process.versions.node} is bundled with the app.`,
 );

@@ -65,6 +65,8 @@ export type StreamSend = z.infer<typeof StreamSendSchema>;
 export const HeadsetsStateSchema = z.object({
   /** Whether OBS has the Audio Monitor plugin; null until OBS has been asked. */
   plugin: z.boolean().nullable(),
+  /** The plugin is on disk (bundled with the app) but OBS has not loaded it yet: restart OBS. */
+  pluginPending: z.boolean(),
   /** Output devices found on this computer. Empty when they cannot be listed; type the name instead. */
   outputs: z.array(z.string()).max(100),
   outputsDetail: z.string().optional(),

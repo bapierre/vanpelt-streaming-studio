@@ -127,7 +127,15 @@ describe('Bus', () => {
   });
   it('retains the latest headsets state', () => {
     const bus = new Bus();
-    const state = (plugin: boolean | null) => ({ plugin, outputs: [], sources: [], stream: {}, labels: {}, headsets: [] });
+    const state = (plugin: boolean | null) => ({
+      plugin,
+      pluginPending: false,
+      outputs: [],
+      sources: [],
+      stream: {},
+      labels: {},
+      headsets: [],
+    });
     bus.publish({ type: 'headsets.state', payload: state(null), source: 'headsets' });
     bus.publish({ type: 'headsets.state', payload: state(true), source: 'headsets' });
     expect(bus.retainedFor(['headsets.']).map((e) => e.payload)).toEqual([state(true)]);

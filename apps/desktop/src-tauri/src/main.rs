@@ -114,7 +114,8 @@ fn start_hub(app: &tauri::AppHandle) -> Result<(OwnedHub, u16), ()> {
         )
     };
     std::fs::create_dir_all(&data).map_err(|_| ())?;
-    let child = Command::new(node)
+    let mut command = Command::new(node);
+    command
         .arg(resources.join("hub.mjs"))
         .current_dir(&data)
         .env_remove("NODE_OPTIONS")
@@ -127,9 +128,13 @@ fn start_hub(app: &tauri::AppHandle) -> Result<(OwnedHub, u16), ()> {
         .env("STREAMHUB_PROTO_PATH", resources.join("stream_list.proto"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| ())?;
+        .stderr(Stdio::null());
+    // The bundled Audio Monitor plugin, so first run can install it into OBS. Linux stays manual.
+    #[cfg(target_os = "macos")]
+    command.env("STREAMHUB_AUDIO_MONITOR_DIR", resources.join("audio-monitor/macos"));
+    #[cfg(target_os = "windows")]
+    command.env("STREAMHUB_AUDIO_MONITOR_DIR", resources.join("audio-monitor/windows"));
+    let child = command.spawn().map_err(|_| ())?;
     let mut hub = OwnedHub { child };
     let stdout = hub.child.stdout.take().ok_or(())?;
     let (sender, receiver) = mpsc::channel();

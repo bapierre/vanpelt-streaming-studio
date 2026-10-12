@@ -31,6 +31,7 @@ const recording = (over: Partial<RecordingSession> = {}): RecordingSession => ({
 });
 const headsets = (over: Partial<HeadsetsState> = {}): HeadsetsState => ({
   plugin: true,
+  pluginPending: false,
   outputs: ['USB Audio'],
   sources: [],
   stream: {},

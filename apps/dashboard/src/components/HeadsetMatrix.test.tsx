@@ -34,6 +34,7 @@ const guestHp: HeadsetState = {
 };
 const state = (over: Partial<HeadsetsState> = {}): HeadsetsState => ({
   plugin: true,
+  pluginPending: false,
   outputs: ['MacBook Pro Speakers', 'USB Audio'],
   sources: [
     { key: 'mic:host', name: 'Host', kind: 'mic', live: true },
@@ -170,6 +171,12 @@ describe('HeadsetMatrix', () => {
     const link = within(screen.getByRole('alert')).getByRole('link', { name: 'Install Audio Monitor' }) as HTMLAnchorElement;
     expect(link.href).toMatch(/^https:\/\/obsproject\.com\//);
     expect(screen.getByText('Install the Audio Monitor plugin in OBS')).toBeTruthy();
+  });
+
+  it('says restart OBS, not install, when the bundled plugin is pending', () => {
+    setup(state({ plugin: false, pluginPending: true }));
+    expect(screen.getByRole('alert').textContent).toMatch(/installed; restart OBS/);
+    expect(screen.queryByRole('link', { name: 'Install Audio Monitor' })).toBeNull();
   });
 
   it('waits for the hub and locks everything while it is away', () => {
