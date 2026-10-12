@@ -45,6 +45,7 @@ function env() {
   return {
     ...process.env,
     HUB_PORT: undefined,
+    HUB_MODULES_PORT: undefined,
     NODE_OPTIONS: undefined,
     NODE_PATH: undefined,
     NODE_ENV: 'production',
@@ -88,16 +89,23 @@ function launch() {
   return { child, ready, exited };
 }
 
+// Reserve a free port so the hub does not collide with a real hub on the default ports.
+async function reservePort() {
+  const reservation = createServer();
+  reservation.listen(0, '127.0.0.1');
+  await once(reservation, 'listening');
+  const port = reservation.address().port;
+  await new Promise((resolve) => reservation.close(resolve));
+  return port;
+}
+
 test(
   'bundled hub serves the dashboard, accepts its WebSocket origin, and stops when its parent pipe closes',
   { timeout: 10000 },
   async () => {
-    const reservation = createServer();
-    reservation.listen(0, '127.0.0.1');
-    await once(reservation, 'listening');
-    const port = reservation.address().port;
-    await new Promise((resolve) => reservation.close(resolve));
-    await writeFile(join(dir, '.env'), `HUB_PORT=${port}\n`);
+    const port = await reservePort();
+    const modulesPort = await reservePort();
+    await writeFile(join(dir, '.env'), `HUB_PORT=${port}\nHUB_MODULES_PORT=${modulesPort}\n`);
     const { child, ready, exited } = launch();
     try {
       assert.equal(await ready, port);
