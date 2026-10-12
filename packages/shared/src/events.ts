@@ -26,6 +26,8 @@ import {
   HeadsetPatchSchema,
   HeadsetSendPatchSchema,
   HeadsetsStateSchema,
+  RenameSourceSchema,
+  StreamSendPatchSchema,
 } from './headsets';
 import { ModulesListSchema } from './modules';
 import { RecordingSessionSchema } from './recording';
@@ -187,6 +189,10 @@ export const EventSchemas = {
   'headsets.cmd.update': HeadsetPatchSchema,
   'headsets.cmd.remove': z.object({ id: HeadsetIdSchema }),
   'headsets.cmd.setSend': HeadsetSendPatchSchema,
+  /** Wire a non-mic source into the stream mix or set its fader; mics take audio.cmd.set. */
+  'headsets.cmd.setStream': StreamSendPatchSchema,
+  /** Display-name override for any source in the routing matrix. */
+  'headsets.cmd.renameSource': RenameSourceSchema,
   'headsets.cmd.listOutputs': Empty,
   'platform.totals': PlatformTotalsSchema,
   'alert.event': AlertSchema,

@@ -24,6 +24,10 @@ export const obsSourceKey = (input: string): SourceKey => `obs:${input}`;
 export const HeadsetSendSchema = z.object({ on: z.boolean(), db: Level });
 export type HeadsetSend = z.infer<typeof HeadsetSendSchema>;
 
+/** An output can follow the stream wiring or another output live, instead of holding its own mix. */
+export const MirrorSchema = z.union([z.literal('stream'), HeadsetIdSchema]);
+export type Mirror = z.infer<typeof MirrorSchema>;
+
 export const HeadsetStateSchema = z.object({
   id: HeadsetIdSchema,
   name: z.string(),
@@ -33,6 +37,8 @@ export const HeadsetStateSchema = z.object({
   owner: MicIdSchema.nullable(),
   masterDb: Level,
   muted: z.boolean(),
+  /** When set, this output plays the mirrored node's wiring; `sends` then holds the effective mix. */
+  mirror: MirrorSchema.nullable(),
   /** ok: playing; no-plugin: Audio Monitor is not installed in OBS; offline: OBS is not connected. */
   status: z.enum(['ok', 'no-plugin', 'offline']),
   detail: z.string().optional(),
@@ -43,9 +49,18 @@ export type HeadsetState = z.infer<typeof HeadsetStateSchema>;
 export const HeadsetSourceSchema = z.object({
   key: SourceKeySchema,
   name: z.string(),
-  kind: z.enum(['mic', 'obs']),
+  /** camera: the audio of a camera's OBS source (e.g. a shotgun mic on the camera body). */
+  kind: z.enum(['mic', 'camera', 'obs']),
+  /** Where the sound comes from: the camera name, or the OBS input name. */
+  detail: z.string().optional(),
+  /** OBS is producing audio for it now. A camera source that is off-screen is silent. */
+  live: z.boolean(),
 });
 export type HeadsetSource = z.infer<typeof HeadsetSourceSchema>;
+
+/** A source's wiring into the stream mix (OBS track 1). `db` is the source's own fader. */
+export const StreamSendSchema = z.object({ on: z.boolean(), db: z.number().min(-100).max(26) });
+export type StreamSend = z.infer<typeof StreamSendSchema>;
 
 export const HeadsetsStateSchema = z.object({
   /** Whether OBS has the Audio Monitor plugin; null until OBS has been asked. */
@@ -53,8 +68,12 @@ export const HeadsetsStateSchema = z.object({
   /** Output devices found on this computer. Empty when they cannot be listed; type the name instead. */
   outputs: z.array(z.string()).max(100),
   outputsDetail: z.string().optional(),
-  /** Mics first, then other OBS audio. */
+  /** Mics first, then camera audio, then other OBS audio. */
   sources: z.array(HeadsetSourceSchema).max(232),
+  /** The stream column: what the audience hears, per source. */
+  stream: z.record(SourceKeySchema, StreamSendSchema),
+  /** Display-name overrides per source, set with headsets.cmd.renameSource. */
+  labels: z.record(SourceKeySchema, z.string()),
   headsets: z.array(HeadsetStateSchema).max(16),
 });
 export type HeadsetsState = z.infer<typeof HeadsetsStateSchema>;
@@ -72,6 +91,7 @@ export const HeadsetPatchSchema = z.object({
   owner: MicIdSchema.nullable().optional(),
   masterDb: Level.optional(),
   muted: z.boolean().optional(),
+  mirror: MirrorSchema.nullable().optional(),
 });
 export type HeadsetPatch = z.infer<typeof HeadsetPatchSchema>;
 
@@ -82,3 +102,15 @@ export const HeadsetSendPatchSchema = z.object({
   db: Level.optional(),
 });
 export type HeadsetSendPatch = z.infer<typeof HeadsetSendPatchSchema>;
+
+/** Wire a non-mic source into the stream mix; `db` sets its OBS fader. Mics take audio.cmd.set instead. */
+export const StreamSendPatchSchema = z.object({
+  source: SourceKeySchema,
+  on: z.boolean().optional(),
+  db: z.number().min(-100).max(26).optional(),
+});
+export type StreamSendPatch = z.infer<typeof StreamSendPatchSchema>;
+
+/** Display-name override for any source; the underlying mic or OBS input keeps its real name. Null clears it. */
+export const RenameSourceSchema = z.object({ source: SourceKeySchema, name: Name.nullable() });
+export type RenameSource = z.infer<typeof RenameSourceSchema>;

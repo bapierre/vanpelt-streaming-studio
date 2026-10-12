@@ -86,6 +86,8 @@ export const MicStateSchema = z.object({
   detail: z.string().optional(),
   /** Whether the input is in the program scene, i.e. the audience can hear it. */
   live: z.boolean(),
+  /** Wired into the stream mix (track 1). Unwired mics still record to their isolated track. */
+  onStream: z.boolean(),
   volumeDb: z.number(),
   muted: z.boolean(),
   monitor: MonitorSchema,
@@ -128,6 +130,7 @@ export type AudioLevels = z.infer<typeof AudioLevelsSchema>;
 export const MicPatchSchema = z.object({
   id: MicIdSchema,
   name: z.string().trim().min(1).max(60).optional(),
+  stream: z.boolean().optional(),
   volumeDb: Db(-100, 26).optional(),
   muted: z.boolean().optional(),
   monitor: MonitorSchema.optional(),
