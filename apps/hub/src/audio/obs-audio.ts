@@ -280,17 +280,17 @@ export async function readInputAudio(obs: ObsCalls, input: string): Promise<Inpu
 /** OBS reports -inf for a fader at the bottom. */
 export const dbFromObs = (db: number) => (Number.isFinite(db) ? Math.max(-100, db) : -100);
 
-/** Mix track always; the isolated track if the mic has one; everything else off so tracks stay clean. */
-export function tracksFor(track: number | null): Record<string, boolean> {
+/** The mix track while wired to the stream; the isolated track if the mic has one; everything else off. */
+export function tracksFor(track: number | null, stream = true): Record<string, boolean> {
   const out: Record<string, boolean> = {};
-  for (let t = 1; t <= 6; t++) out[String(t)] = t === MIX_TRACK || t === track;
+  for (let t = 1; t <= 6; t++) out[String(t)] = (t === MIX_TRACK && stream) || t === track;
   return out;
 }
 
 const BALANCE: Record<MicChannel, number> = { both: 0.5, left: 0, right: 1 };
 
-export async function applyRouting(obs: ObsCalls, input: string, track: number | null, channel: MicChannel) {
-  await obs.call('SetInputAudioTracks', { inputName: input, inputAudioTracks: tracksFor(track) });
+export async function applyRouting(obs: ObsCalls, input: string, track: number | null, channel: MicChannel, stream = true) {
+  await obs.call('SetInputAudioTracks', { inputName: input, inputAudioTracks: tracksFor(track, stream) });
   await obs.call('SetInputAudioBalance', { inputName: input, inputAudioBalance: BALANCE[channel] });
 }
 

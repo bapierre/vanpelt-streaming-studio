@@ -182,6 +182,7 @@ export class AudioService {
         input: e.cfg.input,
         channel: e.cfg.channel,
         track: e.track,
+        onStream: e.cfg.stream,
         status: e.status,
         ...(e.detail ? { detail: e.detail } : {}),
         ...e.audio,
@@ -452,7 +453,7 @@ export class AudioService {
         this.pendingRestore.delete(e.cfg.id);
       }
       const chain = await ensureChain(this.obs, e.cfg.input, this.defaults);
-      if (route) await applyRouting(this.obs, e.cfg.input, e.track, e.cfg.channel);
+      if (route) await applyRouting(this.obs, e.cfg.input, e.track, e.cfg.channel, e.cfg.stream);
       e.audio = await readInputAudio(this.obs, e.cfg.input);
       e.filters = chain.filters;
       e.status = 'ok';
@@ -501,6 +502,14 @@ export class AudioService {
       e.cfg.name = p.name;
       await this.saveConfig();
       if (e.track !== null) await this.setupRecording();
+    }
+    if (p.stream !== undefined && p.stream !== e.cfg.stream) {
+      e.cfg.stream = p.stream;
+      this.saveSoon();
+      if (this.connected && e.status === 'ok') {
+        // Unwiring keeps the isolated track: the mic still records, it just leaves the mix.
+        await this.obs.call('SetInputAudioTracks', { inputName: e.cfg.input, inputAudioTracks: tracksFor(e.track, p.stream) });
+      }
     }
     const obsChange =
       p.volumeDb !== undefined || p.muted !== undefined || p.monitor !== undefined || p.syncOffsetMs !== undefined || p.filters;
@@ -697,7 +706,7 @@ export class AudioService {
         });
       }
       const id = micIdFor(p.name, new Set(this.entries.map((e) => e.cfg.id)));
-      this.opts.config.mics.push({ id, name: p.name, input, channel: p.channel });
+      this.opts.config.mics.push({ id, name: p.name, input, channel: p.channel, stream: true });
       this.rebuild();
       await this.saveConfig();
       const e = this.byId(id)!;

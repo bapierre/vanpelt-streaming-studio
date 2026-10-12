@@ -59,6 +59,8 @@ describe('tracks', () => {
     expect(assignTracks(7)).toEqual([2, 3, 4, 5, 6, null, null]);
     expect(tracksFor(3)).toEqual({ '1': true, '2': false, '3': true, '4': false, '5': false, '6': false });
     expect(tracksFor(null)).toEqual({ '1': true, '2': false, '3': false, '4': false, '5': false, '6': false });
+    // Unwired from the stream: the mix track is off, the isolated track keeps recording.
+    expect(tracksFor(3, false)).toEqual({ '1': false, '2': false, '3': true, '4': false, '5': false, '6': false });
   });
 });
 

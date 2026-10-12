@@ -10,6 +10,8 @@ export const MicConfigSchema = z.object({
   /** OBS input name. */
   input: z.string().min(1),
   channel: MicChannelSchema.default('both'),
+  /** Wired into the stream mix (track 1). Unwired mics still record to their isolated track. */
+  stream: z.boolean().default(true),
 });
 export type MicConfig = z.infer<typeof MicConfigSchema>;
 

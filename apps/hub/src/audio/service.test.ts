@@ -27,8 +27,8 @@ beforeEach(() => {
   config = {
     targetDb: -20,
     mics: [
-      { id: 'host', name: 'Host', input: 'Host mic', channel: 'both' },
-      { id: 'guest', name: 'Guest', input: 'Guest mic', channel: 'right' },
+      { id: 'host', name: 'Host', input: 'Host mic', channel: 'both', stream: true },
+      { id: 'guest', name: 'Guest', input: 'Guest mic', channel: 'right', stream: true },
     ],
   };
   bus.subscribe(['audio.levels'], (e) => levels.push(e.payload as AudioLevels));
@@ -177,6 +177,21 @@ describe('AudioService', () => {
     expect(state().mics.every((m) => m.status === 'offline' && !m.live)).toBe(true);
   });
 
+  it('takes a mic off the stream mix but keeps its isolated track', async () => {
+    await connect();
+    send('audio.cmd.set', { id: 'host', stream: false });
+    await svc.idle();
+    expect(mic('host').onStream).toBe(false);
+    // Track 1 (the mix) off, the isolated track 2 still on: the mic records but is not heard.
+    expect(obs.inputs.get('Host mic')!.tracks).toEqual({ '1': false, '2': true, '3': false, '4': false, '5': false, '6': false });
+    timer.fire(AudioService.SAVE_DELAY_MS);
+    expect(saved.at(-1)!.mics.find((m) => m.id === 'host')!.stream).toBe(false);
+    send('audio.cmd.set', { id: 'host', stream: true });
+    await svc.idle();
+    expect(mic('host').onStream).toBe(true);
+    expect(obs.inputs.get('Host mic')!.tracks['1']).toBe(true);
+  });
+
   it('saves the sound check target and follows renamed OBS inputs', async () => {
     await connect();
     send('audio.cmd.setTarget', { targetDb: -16 });
@@ -298,7 +313,7 @@ describe('adding and removing mics', () => {
   it('says when a mic gets no isolated track', async () => {
     for (const n of [3, 4, 5, 6]) {
       obs.inputs.set(`Mic ${n}`, makeInput());
-      config.mics.push({ id: `mic-${n}`, name: `Mic ${n}`, input: `Mic ${n}`, channel: 'both' });
+      config.mics.push({ id: `mic-${n}`, name: `Mic ${n}`, input: `Mic ${n}`, channel: 'both', stream: true });
     }
     svc = new AudioService({ bus, obs, config, save: async () => {}, timer, now: () => clock, log: () => {} });
     svc.start();
@@ -309,7 +324,7 @@ describe('adding and removing mics', () => {
 
   it('removes a mic, takes it off its isolated track and moves later mics up', async () => {
     obs.inputs.set('Desk mic', makeInput());
-    config.mics.push({ id: 'desk', name: 'Desk', input: 'Desk mic', channel: 'both' });
+    config.mics.push({ id: 'desk', name: 'Desk', input: 'Desk mic', channel: 'both', stream: true });
     svc = new AudioService({ bus, obs, config, save: async (c) => void saved.push(structuredClone(c)), timer, now: () => clock, log: () => {} });
     svc.start();
     await connect();
