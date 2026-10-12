@@ -7,8 +7,8 @@ export const X_SCOPE = 'broadcast.read tweet.read users.read offline.access';
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000;
 const EXPIRY_MARGIN_MS = 60_000;
 const SETUP = 'Add your X app client ID first (see docs/setup/x.md).';
-const RECONNECT = 'X sign-in expired. Reconnect X in Settings → Platforms.';
-const NOT_CONNECTED = 'X is not connected. Connect it in Settings → Platforms.';
+const RECONNECT = 'X sign-in expired. Reconnect X in Settings → X.';
+const NOT_CONNECTED = 'X is not connected. Connect it in Settings → X.';
 
 export class XAuthError extends Error {}
 
@@ -96,14 +96,14 @@ export class XAuth {
     const pending = this.pending;
     // State first: a forged redirect must not cancel a real sign-in or feed its error text through.
     if (!pending || query.state !== pending.state || this.now() > pending.expiresAt) {
-      throw new XAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
+      throw new XAuthError('This sign-in link is invalid or expired. Start again from Settings → X.');
     }
     if (query.error) {
       this.pending = null;
       throw new XAuthError(`X sign-in failed: ${query.error}`);
     }
     if (!query.code) {
-      throw new XAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
+      throw new XAuthError('This sign-in link is invalid or expired. Start again from Settings → X.');
     }
     this.pending = null;
     const generation = this.generation;
@@ -119,7 +119,7 @@ export class XAuth {
     });
     if (!body.refresh_token) {
       throw new XAuthError(
-        'X did not return a refresh token. Connect again from Settings → Platforms.',
+        'X did not return a refresh token. Connect again from Settings → X.',
       );
     }
     let written = false;

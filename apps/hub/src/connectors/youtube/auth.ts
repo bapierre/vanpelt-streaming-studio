@@ -6,7 +6,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 export const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
 const SIGN_IN_WINDOW_MS = 10 * 60 * 1000;
 const EXPIRY_MARGIN_MS = 60_000;
-const RECONNECT = 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.';
+const RECONNECT = 'YouTube sign-in expired. Reconnect YouTube in Settings → YouTube.';
 
 export class YouTubeAuthError extends Error {}
 
@@ -96,14 +96,14 @@ export class YouTubeAuth implements TokenSource {
     const pending = this.pending;
     // State first: a forged redirect must not cancel a real sign-in or feed its error text through.
     if (!pending || query.state !== pending.state || this.now() > pending.expiresAt) {
-      throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
+      throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from Settings → YouTube.');
     }
     if (query.error) {
       this.pending = null;
       throw new YouTubeAuthError(`Google sign-in failed: ${query.error}`);
     }
     if (!query.code) {
-      throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from Settings → Platforms.');
+      throw new YouTubeAuthError('This sign-in link is invalid or expired. Start again from Settings → YouTube.');
     }
     this.pending = null;
     const generation = this.generation;
@@ -150,7 +150,7 @@ export class YouTubeAuth implements TokenSource {
 
   async accessToken(): Promise<string> {
     const yt = this.opts.store.get().youtube;
-    if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it in Settings → Platforms.');
+    if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it in Settings → YouTube.');
     if (!this.stale && yt.accessToken && yt.expiresAt && yt.expiresAt - EXPIRY_MARGIN_MS > this.now()) {
       return yt.accessToken;
     }
@@ -174,7 +174,7 @@ export class YouTubeAuth implements TokenSource {
 
   private async refresh(): Promise<string> {
     const yt = this.opts.store.get().youtube;
-    if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it in Settings → Platforms.');
+    if (!yt?.refreshToken) throw new YouTubeAuthError('YouTube is not connected. Connect it in Settings → YouTube.');
     const generation = this.generation;
     let body: TokenResponse;
     try {

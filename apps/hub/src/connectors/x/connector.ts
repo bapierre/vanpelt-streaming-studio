@@ -64,7 +64,7 @@ export class XConnector implements Connector {
     this.attempt = 0;
     this.ingestReadable = true;
     if (!this.opts.tokens.connected()) {
-      this.status('disconnected', 'Connect X in Settings → Platforms');
+      this.status('disconnected', 'Connect X in Settings → X');
       this.publish('platform.live', CLEARED);
       return;
     }

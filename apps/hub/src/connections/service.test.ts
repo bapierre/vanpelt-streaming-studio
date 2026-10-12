@@ -136,12 +136,12 @@ describe('ConnectionsService', () => {
   it('reports lost YouTube auth as an error with the client still configured, and can connect again', async () => {
     youtube.clientConfigured!.mockReturnValue(true);
     service.start();
-    service.authLost('youtube', 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.');
+    service.authLost('youtube', 'YouTube sign-in expired. Reconnect YouTube in Settings → YouTube.');
     expect(states('youtube').at(-1)).toEqual({
       platform: 'youtube',
       state: 'error',
       clientConfigured: true,
-      detail: 'YouTube sign-in expired. Reconnect YouTube in Settings → Platforms.',
+      detail: 'YouTube sign-in expired. Reconnect YouTube in Settings → YouTube.',
     });
     cmd('connections.cmd.connect', { platform: 'youtube' });
     await settle();
@@ -425,12 +425,12 @@ describe('ConnectionsService X', () => {
 
   it('reports lost X auth as an error with the client still configured', () => {
     service.start();
-    service.authLost('x', 'X sign-in expired. Reconnect X in Settings → Platforms.');
+    service.authLost('x', 'X sign-in expired. Reconnect X in Settings → X.');
     expect(states('x').at(-1)).toEqual({
       platform: 'x',
       state: 'error',
       clientConfigured: true,
-      detail: 'X sign-in expired. Reconnect X in Settings → Platforms.',
+      detail: 'X sign-in expired. Reconnect X in Settings → X.',
     });
   });
 });

@@ -62,7 +62,7 @@ describe('XConnector', () => {
     tokens.connected.mockReturnValue(false);
     connector.start();
     expect(statuses()).toEqual([
-      { platform: 'x', status: 'disconnected', detail: 'Connect X in Settings → Platforms' },
+      { platform: 'x', status: 'disconnected', detail: 'Connect X in Settings → X' },
     ]);
     expect(lives()).toEqual([{ platform: 'x', ingest: 'unknown', broadcast: 'none' }]);
     expect(api.latestBroadcast).not.toHaveBeenCalled();
@@ -220,18 +220,18 @@ describe('XConnector', () => {
 
   it('stops and reports auth loss when the refresh is rejected', async () => {
     tokens.accessToken.mockRejectedValue(
-      new XAuthError('X sign-in expired. Reconnect X in Settings → Platforms.'),
+      new XAuthError('X sign-in expired. Reconnect X in Settings → X.'),
     );
     connector.start();
     await settle();
     expect(statuses().at(-1)).toEqual({
       platform: 'x',
       status: 'error',
-      detail: 'X sign-in expired. Reconnect X in Settings → Platforms.',
+      detail: 'X sign-in expired. Reconnect X in Settings → X.',
     });
     expect(lives().at(-1)).toEqual({ platform: 'x', ingest: 'unknown', broadcast: 'none' });
     expect(onAuthLost).toHaveBeenCalledWith(
-      'X sign-in expired. Reconnect X in Settings → Platforms.',
+      'X sign-in expired. Reconnect X in Settings → X.',
     );
     expect(timer.queue).toEqual([]);
   });

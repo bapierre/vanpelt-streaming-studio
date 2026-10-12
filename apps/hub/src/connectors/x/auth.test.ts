@@ -200,7 +200,7 @@ describe('XAuth', () => {
     }));
     const err = await auth.accessToken().catch((e: Error) => e);
     expect(err).toBeInstanceOf(XAuthError);
-    expect((err as Error).message).toBe('X sign-in expired. Reconnect X in Settings → Platforms.');
+    expect((err as Error).message).toBe('X sign-in expired. Reconnect X in Settings → X.');
     expect(store.get().x).toEqual({ clientId: 'cid' });
   });
 
