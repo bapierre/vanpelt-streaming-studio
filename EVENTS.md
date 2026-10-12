@@ -249,6 +249,7 @@ type HeadsetState = {
 };
 type HeadsetsState = {
   plugin: boolean | null;      // Audio Monitor is installed in OBS; null until OBS has been asked
+  pluginPending: boolean;      // plugin on disk (bundled with the app) but not loaded: restart OBS
   outputs: string[];           // output devices on this computer; empty when they cannot be listed
   outputsDetail?: string;
   sources: HeadsetSource[];    // mics first, then camera audio, then other OBS audio

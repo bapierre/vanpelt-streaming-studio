@@ -21,7 +21,7 @@ On macOS, copy the app to `~/Applications` (or `/Applications`) before opening i
 
 For an optional macOS disk image, run `pnpm --filter @streamhub/desktop tauri build --bundles dmg`. Tauri's DMG layout step requires permission to automate Finder; the default `.app` build does not.
 
-Build on the target OS and CPU architecture. The prepare step bundles the current Node executable, the hub JavaScript, the YouTube gRPC protocol definition, and the dashboard. Cross-compilation is not supported by this prepare step. macOS builds are ad-hoc signed for local use; Developer ID signing and notarization for public distribution are not configured.
+Build on the target OS and CPU architecture. The prepare step bundles the current Node executable, the hub JavaScript, the YouTube gRPC protocol definition, the dashboard, and the Audio Monitor OBS plugin (`scripts/fetch-audio-monitor.mjs` downloads the pinned release, verifies its sha256 and unpacks it unmodified with its GPLv2 LICENSE; macOS and Windows only). On first start the hub installs the plugin into OBS's plugin folder and the dashboard asks for one OBS restart; a plugin the user installed themselves is left alone. Cross-compilation is not supported by this prepare step. macOS builds are ad-hoc signed for local use; Developer ID signing and notarization for public distribution are not configured.
 
 The macOS signing entitlements allow JIT execution because the bundled Node runtime needs it. Tauri applies these entitlements to the app and its sidecar; broader Node development entitlements are not copied.
 

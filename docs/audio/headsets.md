@@ -13,9 +13,9 @@ Each headset is one output device on this computer, such as a USB headphone adap
 
 The **Stream** column is what the audience hears, and it works without the plugin: switching a mic there flips its OBS audio track 1 (an unwired mic still records to its own isolated track), and for any other source it flips track 1 on that input, with the slider driving its OBS fader both ways — drag a fader in OBS and the matrix follows.
 
-## 1. Install Audio Monitor
+## 1. Audio Monitor: installed for you
 
-Download it from the [OBS forum](https://obsproject.com/forum/resources/audio-monitor.1186/), install it, and restart OBS. Until it is installed, the Sound tab shows a link to it and each headset says it needs the plugin. Mics, the stream and the recording work without it.
+Headset mixes need Exeldro's **Audio Monitor** plugin inside OBS, and the desktop app ships with it: on first start the hub drops it into OBS's plugin folder, and the Sound tab tells you to restart OBS once. After that, headsets just work. If you run the hub by itself (no desktop app) or on Linux, install it by hand from the [OBS forum](https://obsproject.com/forum/resources/audio-monitor.1186/) and restart OBS; the Sound tab links there until the plugin is loaded. Mics, the Stream column and the recording work without it. A plugin you installed yourself is never overwritten; the app only manages the copy it installed.
 
 ## 2. Plug in one output per person
 

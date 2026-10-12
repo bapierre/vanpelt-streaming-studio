@@ -165,9 +165,9 @@ Code: `apps/hub/src/audio`. Docs: `docs/audio/mics.md`.
 ## Headsets
 Code: `apps/hub/src/headsets`. Docs: `docs/audio/headsets.md`.
 
-**Works (simulated only):** a mix per person through Exeldro's Audio Monitor plugin, per-source on/off and level, master level and mute; a Stream column (track 1 + fader, works without the plugin); camera audio as its own source kind with an off-screen badge; display labels that survive OBS renames; an output following the stream mix or another output live.
+**Works (simulated only):** a mix per person through Exeldro's Audio Monitor plugin, per-source on/off and level, master level and mute; a Stream column (track 1 + fader, works without the plugin); camera audio as its own source kind with an off-screen badge; display labels that survive OBS renames; an output following the stream mix or another output live. The desktop app bundles Audio Monitor and installs it into OBS on first run.
 
-**Not verified:** the Audio Monitor plugin on the current OBS version, the output delay with several USB adapters, and the follow mode on real hardware (AirPods mirroring the stream mix).
+**Not verified:** the Audio Monitor plugin on the current OBS version (bundled install included), the output delay with several USB adapters, and the follow mode on real hardware (AirPods mirroring the stream mix).
 
 **Missing:** output devices are listed on macOS only; on other systems the device name must be typed exactly as the system shows it.
 
