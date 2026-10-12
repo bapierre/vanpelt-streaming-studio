@@ -49,14 +49,21 @@ describe('PreferencesPage', () => {
     const onTarget = vi.fn();
     const onPrefs = vi.fn();
     render(
-      <PreferencesPage targetDb={-20} disabled={false} prefs={{ startTab: 'last', chatSize: 'medium' }} onTarget={onTarget} onPrefs={onPrefs} />,
+      <PreferencesPage
+        targetDb={-20}
+        disabled={false}
+        prefs={{ startTab: 'last', chatSize: 'medium', appearance: 'system' }}
+        onTarget={onTarget}
+        onPrefs={onPrefs}
+      />,
     );
     fireEvent.change(screen.getByLabelText('Sound check target'), { target: { value: '-18' } });
     act(() => vi.advanceTimersByTime(RANGE_SEND_MS));
     fireEvent.change(screen.getByLabelText('Open on'), { target: { value: 'onscreen' } });
     fireEvent.change(screen.getByLabelText('Chat text size'), { target: { value: 'large' } });
+    fireEvent.change(screen.getByLabelText('Appearance'), { target: { value: 'dark' } });
     expect(onTarget).toHaveBeenCalledWith(-18);
-    expect(onPrefs.mock.calls).toEqual([[{ startTab: 'onscreen' }], [{ chatSize: 'large' }]]);
+    expect(onPrefs.mock.calls).toEqual([[{ startTab: 'onscreen' }], [{ chatSize: 'large' }], [{ appearance: 'dark' }]]);
     const options = [...(screen.getByLabelText('Open on') as HTMLSelectElement).options].map((o) => o.value);
     expect(options).not.toContain('settings');
     vi.useRealTimers();
@@ -64,7 +71,13 @@ describe('PreferencesPage', () => {
 
   it('locks the target until the hub has sent it', () => {
     render(
-      <PreferencesPage targetDb={null} disabled={false} prefs={{ startTab: 'last', chatSize: 'medium' }} onTarget={vi.fn()} onPrefs={vi.fn()} />,
+      <PreferencesPage
+        targetDb={null}
+        disabled={false}
+        prefs={{ startTab: 'last', chatSize: 'medium', appearance: 'system' }}
+        onTarget={vi.fn()}
+        onPrefs={vi.fn()}
+      />,
     );
     expect((screen.getByLabelText('Sound check target') as HTMLInputElement).disabled).toBe(true);
   });

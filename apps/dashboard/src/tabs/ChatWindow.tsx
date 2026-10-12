@@ -13,7 +13,9 @@ import {
 import { ChatTab } from '../components/ChatTab';
 import { Pill } from '../components/ui';
 import { PLATFORMS, platformColor } from '../platforms';
+import { usePrefs } from '../prefs';
 import { formatUptime } from '../state';
+import { useAppearance } from '../theme';
 import { useAlerts } from '../useAlerts';
 import { useDashboardState } from '../useDashboardState';
 import { useNow } from '../useNow';
@@ -39,6 +41,9 @@ export function ChatWindow({ client }: { client: HubClient }) {
   const { recent } = useAlerts(client);
   const [size, setSize] = useState<WindowTextSize>(loadWindowSize);
   const [onTop, setOnTop] = useState(false);
+  // The pop-out keeps the dashboard's appearance, read from the same storage.
+  const [{ appearance }] = usePrefs();
+  useAppearance(appearance);
   useAnnounceChatWindow();
   useEffect(() => {
     document.title = 'Chat · streamhub';

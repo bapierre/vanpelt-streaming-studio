@@ -85,9 +85,9 @@ describe('tabs', () => {
 describe('prefs', () => {
   it('round-trips and falls back on bad values', () => {
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
-    savePrefs({ startTab: 'onscreen', chatSize: 'large' });
-    expect(loadPrefs()).toEqual({ startTab: 'onscreen', chatSize: 'large' });
-    localStorage.setItem('streamhub.prefs', JSON.stringify({ startTab: 'settings', chatSize: 'huge' }));
+    savePrefs({ startTab: 'onscreen', chatSize: 'large', appearance: 'dark' });
+    expect(loadPrefs()).toEqual({ startTab: 'onscreen', chatSize: 'large', appearance: 'dark' });
+    localStorage.setItem('streamhub.prefs', JSON.stringify({ startTab: 'settings', chatSize: 'huge', appearance: 'blue' }));
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
     localStorage.setItem('streamhub.prefs', '{not json');
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);

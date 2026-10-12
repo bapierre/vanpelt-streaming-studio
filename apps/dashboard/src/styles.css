@@ -1,6 +1,7 @@
-/* macOS-flavoured theme: system font, semantic colours, light and dark follow the system. */
+/* macOS-flavoured theme: system font, semantic colours. Light and dark are set on <html> by the
+   Appearance preference (theme.ts); system mode follows the OS from JS. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #f5f5f7;
   --surface: #ffffff;
   --surface-alt: #fafafb;
@@ -28,29 +29,28 @@
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1c1c1e;
-    --surface: #2c2c2e;
-    --surface-alt: #323234;
-    --green-text: #30d158;
-    --orange-text: #ffb340;
-    --red-text: #ff6961;
-    --shadow-pop: 0 10px 34px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
-    --sidebar: #252527;
-    --toolbar: rgba(44, 44, 46, 0.86);
-    --separator: rgba(255, 255, 255, 0.09);
-    --label: rgba(255, 255, 255, 0.88);
-    --secondary: rgba(235, 235, 245, 0.6);
-    --tertiary: rgba(235, 235, 245, 0.3);
-    --fill: rgba(120, 120, 128, 0.24);
-    --fill-strong: rgba(120, 120, 128, 0.36);
-    --accent: #5e5ce6;
-    --red: #ff453a;
-    --green: #30d158;
-    --orange: #ff9f0a;
-    --shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.08);
-  }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #1c1c1e;
+  --surface: #2c2c2e;
+  --surface-alt: #323234;
+  --green-text: #30d158;
+  --orange-text: #ffb340;
+  --red-text: #ff6961;
+  --shadow-pop: 0 10px 34px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  --sidebar: #252527;
+  --toolbar: rgba(44, 44, 46, 0.86);
+  --separator: rgba(255, 255, 255, 0.09);
+  --label: rgba(255, 255, 255, 0.88);
+  --secondary: rgba(235, 235, 245, 0.6);
+  --tertiary: rgba(235, 235, 245, 0.3);
+  --fill: rgba(120, 120, 128, 0.24);
+  --fill-strong: rgba(120, 120, 128, 0.36);
+  --accent: #5e5ce6;
+  --red: #ff453a;
+  --green: #30d158;
+  --orange: #ff9f0a;
+  --shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 }
 html[data-shell='desktop'] {
   --traffic-lights: 84px;
@@ -67,7 +67,7 @@ code { font: 12px ui-monospace, 'SF Mono', Menlo, monospace; }
 .spacer { flex: 1; }
 
 /* Native apps don't select chrome text or show a hand cursor on controls. */
-.toolbar, .sidebar, .status-bar, button, .sheet-head { -webkit-user-select: none; user-select: none; cursor: default; }
+.toolbar, button, .sheet-head { -webkit-user-select: none; user-select: none; cursor: default; }
 
 /* Controls */
 button {
@@ -141,7 +141,6 @@ input:focus { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transpare
 .brand { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; margin-right: 4px; }
 .workspace { display: flex; min-height: 0; }
 .workspace > * { flex: 1; min-width: 0; }
-.sidebar { background: var(--sidebar); border-right: 0.5px solid var(--separator); overflow-y: auto; padding: 12px 10px; }
 
 /* Tabs */
 .segmented.tabs { margin: 0 0 0 4px; padding: 3px; border-radius: 9px; }
@@ -250,31 +249,15 @@ button.big { min-height: 32px; padding: 6px 16px; font-weight: 600; border-radiu
 .side-nav-item[aria-current='page'] .side-nav-note { color: rgba(255, 255, 255, 0.8); }
 .side-nav .attention { position: static; }
 
-/* Sidebar */
-.side-section + .side-section { margin-top: 18px; }
-.side-section h2 { font-size: 11px; font-weight: 700; color: var(--secondary); padding: 0 8px 6px; }
-.side-sub { font-weight: 500; color: var(--tertiary); }
-.side-empty { color: var(--tertiary); padding: 2px 8px; }
-.scene-list { display: grid; gap: 2px; }
-.scene { justify-content: flex-start; width: 100%; min-height: 30px; padding: 5px 8px; background: transparent; font-weight: 400; text-align: left; }
-.scene:hover:not(:disabled) { background: var(--fill); }
-.scene.active { background: var(--accent); color: #fff; }
-.scene.active:hover:not(:disabled) { background: var(--accent); }
+/* Scenes and sources (ScenePanel tiles; per-tab layout lives in styles/*.css) */
 .scene-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.program-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 4px; background: var(--red); color: #fff; }
-.source-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.source { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; }
-.source:hover { background: var(--fill); }
-.source.hidden .source-name { color: var(--tertiary); }
-.source-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .switch { flex: none; position: relative; width: 26px; height: 15px; min-height: 0; padding: 0; border-radius: 999px; background: var(--fill-strong); transition: background 0.15s; }
 .switch::after { content: ''; position: absolute; top: 1.5px; left: 1.5px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
 .switch[aria-checked='true'] { background: var(--green); }
 .switch[aria-checked='true']::after { transform: translateX(11px); }
 .switch:hover:not(:disabled)[aria-checked='true'] { background: var(--green); }
 
-/* Cards and chat */
-.card { background: var(--surface); border-radius: 10px; box-shadow: var(--shadow); }
+/* Chat */
 .chat { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .chat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 0.5px solid var(--separator); }
 .chat-head h2 { font-size: 13px; font-weight: 600; }
@@ -283,7 +266,6 @@ button.big { min-height: 32px; padding: 6px 16px; font-weight: 600; border-radiu
 .filter::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--platform); }
 .filter.off { background: var(--fill); color: var(--tertiary); }
 .filter.off::before { background: var(--tertiary); }
-.empty { color: var(--tertiary); text-align: center; padding: 48px 16px; }
 .chat-list { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; }
 .chat-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px 6px 14px; overflow-wrap: anywhere; }
 .chat-row:hover { background: var(--fill); }
@@ -368,34 +350,21 @@ button.big { min-height: 32px; padding: 6px 16px; font-weight: 600; border-radiu
 .meter-fill.hot { background: var(--red); }
 /* Full-width track with a 2px marker at its left edge, so translateX % is meter-relative. */
 .meter-peak { position: absolute; inset: 0; background: linear-gradient(to right, var(--label) 0 2px, transparent 2px); opacity: 0.6; transform: translateX(min(var(--peak, 0%), calc(100% - 2px))); transition: transform 60ms linear; }
-.mixer-row { display: grid; gap: 4px; padding: 4px 8px 6px; }
-.mixer-head { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-.mixer-head .scene-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mixer .control output { min-width: 4.5em; font-size: 11px; }
 .mute { font-size: 11px; padding: 2px 8px; border-radius: 5px; }
 .mute.on { background: var(--red); color: #fff; }
 .mic-name { font: inherit; font-size: 14px; font-weight: 700; color: var(--label); background: transparent; border: 0.5px solid transparent; border-radius: 6px; padding: 2px 6px; min-width: 0; flex: 0 1 220px; }
 .mic-name:hover, .mic-name:focus { border-color: var(--separator); background: var(--surface); }
-.mic-card p { margin: 0; }
-.mic-filters { display: grid; gap: 8px; }
-.mic-filters > summary { cursor: pointer; font-size: 13px; font-weight: 500; }
-.mic-filters[open] > summary { margin-bottom: 8px; }
-.mic-filters .camera-controls + .camera-controls { margin-top: 8px; }
-.soundcheck { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
-/* Recording */
+/* Recording (toolbar controls; the panel itself is styled per tab) */
 .go-live.record { display: inline-flex; align-items: center; gap: 6px; }
 .go-live.record:not(.danger) { background: var(--fill); color: var(--label); }
 .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
 .rec-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); padding: 3px 8px; border-radius: 5px; }
 .rec-badge.paused { color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); }
-.recording-panel p { margin: 0; padding: 2px 8px; font-size: 12px; }
 .rec-detail { color: var(--red); }
 .rec-disk { color: var(--secondary); }
 .rec-disk.low { color: var(--orange); font-weight: 600; }
 .rec-disk.critical { color: var(--red); font-weight: 700; }
-.rec-cameras, .rec-files { list-style: none; margin: 4px 0; padding: 0; }
-.rec-cameras li, .rec-files li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 4px 8px; font-size: 12px; }
 .rec-cam-name, .rec-file-label { font-weight: 600; }
 .rec-status { display: inline-flex; align-items: center; gap: 5px; color: var(--secondary); }
 .rec-status .dot { width: 6px; height: 6px; }
@@ -403,37 +372,18 @@ button.big { min-height: 32px; padding: 6px 16px; font-weight: 600; border-radiu
 .rec-status.bad { color: var(--red); }
 .rec-status.bad .dot { background: var(--red); }
 .rec-cam-detail { flex-basis: 100%; color: var(--secondary); font-size: 11px; }
-.rec-files-title { font-size: 11px; font-weight: 700; color: var(--secondary); padding: 8px 8px 0; margin: 0; }
 .rec-file-path { flex-basis: 100%; color: var(--secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rec-dir { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Sound tab */
-.console { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
-.strip { flex: 0 0 180px; display: grid; gap: 6px; align-content: start; padding: 8px; border-radius: 8px; background: var(--fill); }
-.strip.selected { box-shadow: 0 0 0 2px var(--accent); }
-.strip-name { justify-content: flex-start; gap: 6px; width: 100%; padding: 2px 4px; background: transparent; font-weight: 600; text-align: left; }
-.strip-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.strip .control output { min-width: 4.5em; font-size: 11px; }
-.strip-actions { display: flex; gap: 6px; }
-
-/* Headsets */
-.hp-scroll { overflow-x: auto; display: block; }
-.hp-matrix { border-collapse: collapse; font-size: 13px; }
-.hp-matrix th, .hp-matrix td { padding: 6px 8px; vertical-align: top; text-align: left; border-bottom: 0.5px solid var(--separator); }
+/* Headsets: shared rows; the matrix layout lives in styles/sound.css. */
 .hp-source { font-weight: 600; white-space: nowrap; min-width: 120px; }
 .hp-head { display: table-cell; min-width: 220px; font-weight: 400; }
-.hp-head > * + * { margin-top: 6px; }
-.hp-head select { width: 100%; }
 .hp-title { display: flex; align-items: center; gap: 6px; }
-.hp-cell { min-width: 220px; }
-.hp-cell.off output { color: var(--tertiary); }
-.hp-cell .control output { min-width: 4.5em; font-size: 11px; }
 .hp-cell.mirrored { opacity: 0.55; }
 .hp-source .badge, .hp-source .link { margin-left: 6px; font-weight: 400; }
 .hp-rename { font: inherit; font-weight: 600; color: var(--label); background: var(--surface); border: 0.5px solid var(--separator); border-radius: 6px; padding: 3px 6px; width: 100%; box-sizing: border-box; }
 
 /* Alerts and goals */
-.settings-sub { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--secondary); }
 .overlay-url { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .overlay-url code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 5px; background: var(--fill); }
 .alert-toggle { display: inline-flex; align-items: center; gap: 6px; }
@@ -441,7 +391,5 @@ button.big { min-height: 32px; padding: 6px 16px; font-weight: 600; border-radiu
 .alert-template { flex: 1; min-width: 200px; }
 .alert-number { width: 90px; }
 .alert-currency { width: 56px; text-transform: uppercase; }
-.alert-recent { list-style: none; margin: 0; padding: 0; }
-.alert-recent-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .goal-platforms { margin: 0; padding: 0; border: 0; }
 .goal-platforms legend { float: left; width: 120px; padding: 0; }

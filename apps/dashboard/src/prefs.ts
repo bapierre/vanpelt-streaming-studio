@@ -6,14 +6,17 @@ export const TAB_IDS: TabId[] = ['live', 'sound', 'onscreen', 'settings'];
 /** Where the dashboard opens. Settings is never a choice, so a shared screen never opens on keys and codes. */
 export type StartTab = 'last' | Exclude<TabId, 'settings'>;
 export type ChatSize = 'small' | 'medium' | 'large';
-export type Prefs = { startTab: StartTab; chatSize: ChatSize };
+/** Light and dark; system follows the OS until the user picks. */
+export type Appearance = 'system' | 'light' | 'dark';
+export type Prefs = { startTab: StartTab; chatSize: ChatSize; appearance: Appearance };
 
-export const DEFAULT_PREFS: Prefs = { startTab: 'last', chatSize: 'medium' };
+export const DEFAULT_PREFS: Prefs = { startTab: 'last', chatSize: 'medium', appearance: 'system' };
 const PREFS_KEY = 'streamhub.prefs';
 const LAST_TAB_KEY = 'streamhub.lastTab';
 
 const START_TABS: StartTab[] = ['last', 'live', 'sound', 'onscreen'];
 const CHAT_SIZES: ChatSize[] = ['small', 'medium', 'large'];
+const APPEARANCES: Appearance[] = ['system', 'light', 'dark'];
 
 /** Private windows and locked-down webviews can throw on storage access; preferences are only a convenience. */
 function storage(): Storage | null {
@@ -50,6 +53,9 @@ export function loadPrefs(): Prefs {
   return {
     startTab: START_TABS.includes(saved.startTab as StartTab) ? (saved.startTab as StartTab) : DEFAULT_PREFS.startTab,
     chatSize: CHAT_SIZES.includes(saved.chatSize as ChatSize) ? (saved.chatSize as ChatSize) : DEFAULT_PREFS.chatSize,
+    appearance: APPEARANCES.includes(saved.appearance as Appearance)
+      ? (saved.appearance as Appearance)
+      : DEFAULT_PREFS.appearance,
   };
 }
 

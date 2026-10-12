@@ -9,7 +9,7 @@ import type { Studio } from '../useStudio';
 
 afterEach(cleanup);
 
-const prefs: Prefs = { startTab: 'last', chatSize: 'medium' };/** Just enough of a Studio for SettingsArea, with a publishing spy for every command. */
+const prefs: Prefs = { startTab: 'last', chatSize: 'medium', appearance: 'system' };/** Just enough of a Studio for SettingsArea, with a publishing spy for every command. */
 function studio(over: Partial<DashboardState> = {}, mics = 0) {
   const publish = vi.fn();
   const state: DashboardState = {

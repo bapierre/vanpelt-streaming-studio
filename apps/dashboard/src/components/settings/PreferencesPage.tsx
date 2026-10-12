@@ -1,8 +1,9 @@
-import type { ChatSize, Prefs, StartTab } from '../../prefs';
+import type { Appearance, ChatSize, Prefs, StartTab } from '../../prefs';
 import { ThrottledRange } from '../ThrottledRange';
 
 const START_LABELS: Record<StartTab, string> = { last: 'The last tab used', live: 'Live', sound: 'Sound', onscreen: 'On screen' };
 const SIZE_LABELS: Record<ChatSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' };
+const APPEARANCE_LABELS: Record<Appearance, string> = { system: 'Match the system', light: 'Light', dark: 'Dark' };
 
 /** Sound check target and this browser's dashboard preferences. */
 export function PreferencesPage({
@@ -54,6 +55,20 @@ export function PreferencesPage({
               ))}
             </select>
             <span className="small muted control-help">Settings is never reopened on its own, so a shared screen does not show it.</span>
+          </div>
+          <div className="control">
+            <label htmlFor="pref-appearance">Appearance</label>
+            <select
+              id="pref-appearance"
+              value={prefs.appearance}
+              onChange={(e) => onPrefs({ appearance: e.target.value as Appearance })}
+            >
+              {(Object.keys(APPEARANCE_LABELS) as Appearance[]).map((a) => (
+                <option key={a} value={a}>
+                  {APPEARANCE_LABELS[a]}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="control">
             <label htmlFor="pref-chat-size">Chat text size</label>
