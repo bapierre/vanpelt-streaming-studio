@@ -31,6 +31,7 @@ import { installAudioMonitor } from './headsets/plugin';
 import { HeadsetService } from './headsets/service';
 import { ModuleHost } from './modules/host';
 import { ObsBridge, type ObsClient } from './obs/bridge';
+import { PreviewService } from './obs/previews';
 import { RecordingService } from './recording/service';
 import { loadObsSettings, ObsSettingsService } from './obs/settings';
 import { runtimePaths } from './runtime';
@@ -102,6 +103,7 @@ const obs = new ObsBridge({
 });
 const obsSettings = new ObsSettingsService({ bus, store, bridge: obs, initial: obsInitial });
 const destinations = new DestinationsService({ bus, store, obs });
+const previews = new PreviewService({ bus, obs });
 
 const cameraConfigs = await loadCameras(paths.cameras);
 const drivers = await discoverDrivers(paths.modules);
@@ -187,6 +189,7 @@ recording.start();
 alerts.start();
 obsSettings.start();
 destinations.start();
+previews.start();
 obs.start();
 connections.start();
 manager.startAll();
@@ -204,6 +207,7 @@ const shutdown = async () => {
   alerts.stop();
   obsSettings.stop();
   destinations.stop();
+  previews.stop();
   await Promise.all([obs.stop(), manager.stopAll(), driverHost.stop()]);
   await app.close();
   process.exit(0);

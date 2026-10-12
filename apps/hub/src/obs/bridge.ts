@@ -277,6 +277,8 @@ export class ObsBridge {
 
   private async handleCommand(e: Envelope) {
     if (e.type === 'obs.cmd.reconnect') return this.reconnect();
+    // The previews service owns the preview lease; a lease arriving while OBS is away is not a warning.
+    if (e.type === 'obs.cmd.previews.watch') return;
     if (!this.connected) {
       console.warn(`[obs] ignoring ${e.type}: OBS is not connected`);
       return;
