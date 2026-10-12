@@ -15,6 +15,7 @@ import {
   type StreamSendPatch,
 } from '@streamhub/shared';
 import { formatDb } from '../audio';
+import { Sheet } from './Sheet';
 import { ThrottledRange } from './ThrottledRange';
 
 export type HeadsetActions = {
@@ -102,66 +103,78 @@ const HeadsetHead = memo(function HeadsetHead({
           Remove
         </button>
       </div>
-      <select
-        aria-label={`Who wears ${h.name}`}
-        value={h.owner ?? ''}
-        disabled={disabled}
-        onChange={(e) => actions.onUpdate({ id: h.id, owner: e.target.value || null })}
-      >
-        <option value="">No one</option>
-        {mics.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label={`${h.name} follows`}
-        value={h.mirror ?? ''}
-        disabled={disabled}
-        onChange={(e) => actions.onUpdate({ id: h.id, mirror: (e.target.value === '' ? null : e.target.value) as Mirror | null })}
-      >
-        <option value="">Own mix</option>
-        <option value="stream">Stream mix</option>
-        {headsets
-          .filter((o) => o.id !== h.id)
-          .map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
+      <label className="hp-field">
+        <span className="hp-field-label">Output device</span>
+        <DeviceInput
+          label={`${h.name} output`}
+          value={device}
+          outputs={outputs}
+          disabled={disabled}
+          onChange={setDevice}
+          onCommit={commitDevice}
+        />
+      </label>
+      <label className="hp-field">
+        <span className="hp-field-label">Worn by</span>
+        <select
+          aria-label={`Who wears ${h.name}`}
+          value={h.owner ?? ''}
+          disabled={disabled}
+          onChange={(e) => actions.onUpdate({ id: h.id, owner: e.target.value || null })}
+        >
+          <option value="">No one</option>
+          {mics.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
             </option>
           ))}
-      </select>
+        </select>
+      </label>
+      <label className="hp-field">
+        <span className="hp-field-label">Follows</span>
+        <select
+          aria-label={`${h.name} follows`}
+          value={h.mirror ?? ''}
+          disabled={disabled}
+          onChange={(e) => actions.onUpdate({ id: h.id, mirror: (e.target.value === '' ? null : e.target.value) as Mirror | null })}
+        >
+          <option value="">Own mix</option>
+          <option value="stream">Stream mix</option>
+          {headsets
+            .filter((o) => o.id !== h.id)
+            .map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+        </select>
+      </label>
       {h.mirror !== null && (
         <p className="small muted">{h.mirror === 'stream' ? 'Following the stream mix' : `Following ${followName ?? h.mirror}`}</p>
       )}
-      <DeviceInput
-        label={`${h.name} output`}
-        value={device}
-        outputs={outputs}
-        disabled={disabled}
-        onChange={setDevice}
-        onCommit={commitDevice}
-      />
-      <div className="control">
-        <ThrottledRange
-          label={`${h.name} master level`}
-          value={h.masterDb}
-          min={HEADSET_MIN_DB}
-          max={HEADSET_MAX_DB}
-          step={0.5}
-          disabled={disabled}
-          format={formatDb}
-          onChange={(v) => actions.onUpdate({ id: h.id, masterDb: v })}
-        />
-        <button
-          className={h.muted ? 'mute on' : 'mute'}
-          aria-pressed={h.muted}
-          aria-label={h.muted ? `Unmute ${h.name}` : `Mute ${h.name}`}
-          disabled={disabled}
-          onClick={() => actions.onUpdate({ id: h.id, muted: !h.muted })}
-        >
-          {h.muted ? 'Muted' : 'Mute'}
-        </button>
+      <div className="hp-field">
+        <span className="hp-field-label">Master level</span>
+        <div className="control">
+          <ThrottledRange
+            label={`${h.name} master level`}
+            value={h.masterDb}
+            min={HEADSET_MIN_DB}
+            max={HEADSET_MAX_DB}
+            step={0.5}
+            disabled={disabled}
+            format={formatDb}
+            onChange={(v) => actions.onUpdate({ id: h.id, masterDb: v })}
+          />
+          <button
+            className={h.muted ? 'mute on' : 'mute'}
+            aria-pressed={h.muted}
+            aria-label={h.muted ? `Unmute ${h.name}` : `Mute ${h.name}`}
+            disabled={disabled}
+            onClick={() => actions.onUpdate({ id: h.id, muted: !h.muted })}
+          >
+            {h.muted ? 'Muted' : 'Mute'}
+          </button>
+        </div>
       </div>
       {h.detail && <p className={h.status === 'ok' ? 'small muted' : 'small conn-error'}>{h.detail}</p>}
     </th>
@@ -336,18 +349,22 @@ function SourceHead({
   );
 }
 
+/** The Add headphones form, shown in a sheet opened from the Who hears what header. */
 function AddHeadset({
   mics,
   outputs,
   outputsDetail,
   disabled,
   actions,
+  onAdded,
 }: {
   mics: MicState[];
   outputs: string[];
   outputsDetail?: string;
   disabled: boolean;
   actions: HeadsetActions;
+  /** Closes the sheet after headphones are added. */
+  onAdded?: () => void;
 }) {
   const [name, setName] = useState('');
   const [device, setDevice] = useState('');
@@ -359,10 +376,10 @@ function AddHeadset({
     setName('');
     setDevice('');
     setOwner('');
+    onAdded?.();
   };
   return (
-    <div className="group-row form">
-      <strong>Add a headset</strong>
+    <div className="add-headset-form">
       <label className="field">
         <span className="field-label">Name</span>
         <input value={name} maxLength={60} disabled={disabled} onChange={(e) => setName(e.target.value)} />
@@ -382,12 +399,13 @@ function AddHeadset({
         <span className="field-label">Output</span>
         <DeviceInput label="Output" value={device} outputs={outputs} disabled={disabled} onChange={setDevice} />
       </div>
-      <div className="control">
-        <button className="primary" disabled={disabled || !ready} onClick={add}>
-          Add headset
-        </button>
+      <p className="small muted">One pair of headphones needs its own output, such as its own USB adapter.</p>
+      <div className="form-actions">
         <button disabled={disabled} onClick={actions.onListOutputs}>
           Refresh outputs
+        </button>
+        <button className="primary" disabled={disabled || !ready} onClick={add}>
+          Add headphones
         </button>
       </div>
       {outputsDetail && <p className="small muted">{outputsDetail}</p>}
@@ -407,6 +425,7 @@ export function HeadsetMatrix({
   disabled: boolean;
   actions: HeadsetActions;
 }) {
+  const [adding, setAdding] = useState(false);
   const { onListOutputs } = actions;
   useEffect(() => {
     if (!disabled) onListOutputs();
@@ -416,41 +435,42 @@ export function HeadsetMatrix({
   // The hub can only switch sends while the plugin is there; config changes are still saved.
   const noPlugin = state.plugin === false;
   return (
-    <section className="group headsets" aria-label="Headsets">
-      <div className="group-row form">
-        <p className="small muted">
-          Each person gets their own mix in their own headset. Levels go up to 0 dB; to make a headset louder overall,
-          raise its master level or the headphone volume.
-        </p>
-        {noPlugin && state.pluginPending && (
-          <p className="small conn-error" role="alert">
-            The Audio Monitor plugin is installed; restart OBS to activate headset mixes. The Stream column already
-            works.
-          </p>
-        )}
-        {noPlugin && !state.pluginPending && (
-          <p className="small conn-error" role="alert">
-            Headset mixes need the Audio Monitor plugin in OBS. The Stream column works without it.{' '}
-            <a href={AUDIO_MONITOR_URL} target="_blank" rel="noreferrer">
-              Install Audio Monitor
-            </a>
-            , then restart OBS.
-          </p>
-        )}
+    <section className="headsets" aria-label="Who hears what">
+      <div className="headsets-head">
+        <h2>Who hears what</h2>
+        <p className="small muted">Each column is one pair of headphones. The Stream column is what viewers hear.</p>
+        <span className="spacer" />
+        <button className="sm" onClick={() => setAdding(true)}>
+          + Add headphones
+        </button>
       </div>
+      {noPlugin && state.pluginPending && (
+        <p className="small conn-error" role="alert">
+          The Audio Monitor plugin is installed; restart OBS to activate headset mixes. The Stream column already works.
+        </p>
+      )}
+      {noPlugin && !state.pluginPending && (
+        <p className="small conn-error" role="alert">
+          Headset mixes need the Audio Monitor plugin in OBS. The Stream column works without it.{' '}
+          <a href={AUDIO_MONITOR_URL} target="_blank" rel="noreferrer">
+            Install Audio Monitor
+          </a>
+          , then restart OBS.
+        </p>
+      )}
       {(state.headsets.length > 0 || state.sources.length > 0) && (
-        <div className="group-row hp-scroll">
+        <div className="matrix-panel">
           <table className="hp-matrix">
             <thead>
               <tr>
                 <th scope="col" className="hp-source">
                   Source
                 </th>
-                <th scope="col" className="hp-head" aria-label="Stream">
+                <th scope="col" className="hp-head stream-head" aria-label="Stream">
                   <div className="hp-title">
                     <strong>Stream</strong>
                   </div>
-                  <p className="small muted">what the broadcast hears</p>
+                  <p className="small muted">what viewers hear</p>
                 </th>
                 {state.headsets.map((h) => (
                   <HeadsetHead
@@ -511,16 +531,24 @@ export function HeadsetMatrix({
               })}
             </tbody>
           </table>
-          {state.sources.length === 0 && <p className="small muted">No mics or OBS audio yet.</p>}
+          {state.headsets.length > 0 && (
+            <p className="small muted matrix-note">
+              Headset levels go up to 0 dB; raise a headset's master level or the headphone volume to make it louder.
+            </p>
+          )}
+          {state.sources.length === 0 && <p className="small muted matrix-note">No mics or OBS audio yet.</p>}
         </div>
       )}
-      <AddHeadset
-        mics={mics}
-        outputs={state.outputs}
-        outputsDetail={state.outputsDetail}
-        disabled={disabled}
-        actions={actions}
-      />
+      <Sheet open={adding} title="Add headphones" onClose={() => setAdding(false)}>
+        <AddHeadset
+          mics={mics}
+          outputs={state.outputs}
+          outputsDetail={state.outputsDetail}
+          disabled={disabled}
+          actions={actions}
+          onAdded={() => setAdding(false)}
+        />
+      </Sheet>
     </section>
   );
 }

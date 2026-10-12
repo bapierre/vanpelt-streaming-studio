@@ -68,6 +68,7 @@ function setup(s: HeadsetsState | null = state(), disabled = false) {
 describe('HeadsetMatrix', () => {
   it('has a row per source, mics first, and a column per headset', () => {
     setup();
+    expect(screen.getByRole('heading', { name: 'Who hears what' })).toBeTruthy();
     const rows = screen.getAllByRole('rowheader').map((r) => r.textContent);
     expect(rows).toEqual(['HostRename', 'GuestRename', 'Music · OBSRename']);
     expect(screen.getByRole('columnheader', { name: 'Guest headset' })).toBeTruthy();
@@ -132,23 +133,31 @@ describe('HeadsetMatrix', () => {
     expect(a.onSetStream).toHaveBeenCalledWith({ source: 'mic:host', on: false });
   });
 
-  it('adds a headset with a listed or typed output and lists outputs when it opens', () => {
+  it('adds a headset from the sheet, with a listed or typed output, and lists outputs when it opens', () => {
     const a = setup(state({ headsets: [], sources: [] }));
     expect(a.onListOutputs).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('table')).toBeNull();
-    const add = screen.getByRole('button', { name: 'Add headset' }) as HTMLButtonElement;
+    // The form starts hidden behind the Add headphones button.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add headphones' }));
+    expect(screen.getByRole('dialog', { name: 'Add headphones' })).toBeTruthy();
+    const add = screen.getByRole('button', { name: 'Add headphones' }) as HTMLButtonElement;
     expect(add.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: ' Host phones ' } });
     fireEvent.change(screen.getByLabelText('Worn by'), { target: { value: 'host' } });
     fireEvent.change(screen.getByLabelText('Output'), { target: { value: 'Scarlett 2i2' } });
     fireEvent.click(add);
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh outputs' }));
     expect(a.onAdd).toHaveBeenCalledWith({ name: 'Host phones', device: 'Scarlett 2i2', owner: 'host' });
-    expect(a.onListOutputs).toHaveBeenCalledTimes(2);
+    // Adding closes the sheet with clean fields for the next pair.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add headphones' }));
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh outputs' }));
+    expect(a.onListOutputs).toHaveBeenCalledTimes(2);
   });
 
   it('offers the listed outputs and explains when they cannot be listed', () => {
+    const open = () => fireEvent.click(screen.getByRole('button', { name: '+ Add headphones' }));
     const { container } = render(
       <HeadsetMatrix
         state={state({ outputs: [], outputsDetail: 'Output devices can only be listed on macOS.' })}
@@ -157,12 +166,14 @@ describe('HeadsetMatrix', () => {
         actions={noopActions}
       />,
     );
+    open();
     expect(screen.getByText(/only be listed on macOS/)).toBeTruthy();
     expect(container.querySelectorAll('datalist option')).toHaveLength(0);
     cleanup();
     const { container: c2 } = render(
       <HeadsetMatrix state={state()} mics={mics} disabled={false} actions={noopActions} />,
     );
+    open();
     expect([...c2.querySelectorAll('datalist')][0]!.querySelectorAll('option')).toHaveLength(2);
   });
 

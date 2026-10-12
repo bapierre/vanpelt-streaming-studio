@@ -106,7 +106,7 @@ function renderPanel(s: AudioState | null = state(), disabled = false) {
       headsetActions={h}
     />,
   );
-  /** The detail panel of one mic, opened from its strip when needed. */
+  /** The voice-settings panel of one mic, opened from its card when needed. */
   const card = (name: string) => {
     if (!screen.queryByRole('article', { name })) fireEvent.click(screen.getByRole('button', { name: `Open ${name}` }));
     return within(screen.getByRole('article', { name }));
@@ -159,12 +159,17 @@ describe('Mixer', () => {
   });
 });
 
-describe('SoundTab console', () => {
-  it('has a strip per mic with meter, fader, mute, track and on-air badges', () => {
+describe('SoundTab mics page', () => {
+  it('has a card per mic with meter, fader, mute, device, track pill and on-air pill', () => {
     vi.useFakeTimers();
     const { a } = renderPanel(state([host, { ...guest, live: false }]));
+    expect(screen.getByRole('heading', { name: 'Mics' })).toBeTruthy();
     expect(screen.getAllByRole('meter')).toHaveLength(2);
     expect(screen.getByText('On air')).toBeTruthy();
+    expect(screen.getByText('Track 2')).toBeTruthy();
+    expect(screen.getByText('Track 3')).toBeTruthy();
+    expect(screen.getByText('Host mic')).toBeTruthy();
+    expect(screen.getByText('Wireless, right side')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Mute Guest' }));
     fireEvent.change(screen.getByLabelText('Host volume'), { target: { value: '-6' } });
     act(() => vi.advanceTimersByTime(RANGE_SEND_MS));
@@ -173,7 +178,7 @@ describe('SoundTab console', () => {
     expect(a.onSoundcheck).toHaveBeenCalledWith('host', 'start');
   });
 
-  it('opens and closes the detail panel from the strip', () => {
+  it('opens and closes the voice panel from the card, and with its close button', () => {
     renderPanel();
     expect(screen.queryByRole('article')).toBeNull();
     const open = screen.getByRole('button', { name: 'Open Host' });
@@ -182,27 +187,45 @@ describe('SoundTab console', () => {
     expect(open.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Open Guest' }));
     expect(screen.queryByRole('article', { name: 'Host' })).toBeNull();
+    expect(screen.getByRole('article', { name: 'Guest' })).toBeTruthy();
+    // Clicking the same card again toggles the panel closed.
     fireEvent.click(screen.getByRole('button', { name: 'Open Guest' }));
     expect(screen.queryByRole('article')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Host' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Host' }));
+    expect(screen.queryByRole('article')).toBeNull();
+  });
+
+  it('offers Add mics to all scenes on a card that is not in the live scene', () => {
+    const { a } = renderPanel(state([host, { ...guest, live: false }]));
+    fireEvent.click(screen.getByRole('button', { name: 'Add mics to all scenes' }));
+    expect(a.onNest).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderPanel(state([host, guest]));
+    expect(screen.queryByRole('button', { name: 'Add mics to all scenes' })).toBeNull();
   });
 
   it('asks for output devices for the headsets when it opens', () => {
     const { h } = renderPanel();
-    expect(screen.getByRole('heading', { name: 'Headsets' })).toBeTruthy();
+    // No headset state yet: the section waits for the hub but still asks for outputs.
+    expect(screen.getByText('Waiting for the hub…')).toBeTruthy();
     expect(h.onListOutputs).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('SoundTab mic details', () => {
-  it('summarises the recorded tracks and asks for devices when it opens', () => {
+describe('SoundTab voice panel', () => {
+  it('shows the recording tracks as pills and asks for devices when it opens', () => {
     const { a } = renderPanel();
-    expect(screen.getByText(/Stream mix \(track 1\), Host \(track 2\), Guest \(track 3\)/)).toBeTruthy();
+    expect(screen.getByText('Recording tracks')).toBeTruthy();
+    expect(screen.getByText('1 Stream mix')).toBeTruthy();
+    expect(screen.getByText('2 Host')).toBeTruthy();
+    expect(screen.getByText('3 Guest')).toBeTruthy();
     expect(a.onListDevices).toHaveBeenCalledTimes(1);
   });
 
   it('says when track changes wait for the next recording', () => {
     renderPanel({ ...state(), tracksPending: true, recordDetail: 'Recording format FLV cannot hold extra tracks' });
-    expect(screen.getByText(/apply to the next recording/)).toBeTruthy();
+    expect(screen.getByText(/Track changes apply to the next recording/)).toBeTruthy();
     expect(screen.getByText(/FLV/)).toBeTruthy();
   });
 
@@ -213,12 +236,18 @@ describe('SoundTab mic details', () => {
     expect(card('Lost').getByText(/Mix only/)).toBeTruthy();
   });
 
-  it('renames on Enter and removes a mic', () => {
+  it('renames on Enter and removes a mic only after a confirm', () => {
     const { a, card } = renderPanel();
     const name = card('Host').getByLabelText('Mic name');
     fireEvent.change(name, { target: { value: '  Ana  ' } });
     fireEvent.keyDown(name, { key: 'Enter' });
-    fireEvent.click(card('Guest').getByRole('button', { name: 'Remove' }));
+    const guestCard = card('Guest');
+    fireEvent.click(guestCard.getByRole('button', { name: 'Remove Guest' }));
+    expect(guestCard.getByText(/Remove Guest from the show\?/)).toBeTruthy();
+    fireEvent.click(guestCard.getByRole('button', { name: 'Keep' }));
+    expect(a.onRemove).not.toHaveBeenCalled();
+    fireEvent.click(guestCard.getByRole('button', { name: 'Remove Guest' }));
+    fireEvent.click(guestCard.getByRole('button', { name: 'Remove' }));
     expect(a.onSet).toHaveBeenCalledWith({ id: 'host', name: 'Ana' });
     expect(a.onRemove).toHaveBeenCalledWith('guest');
   });
@@ -228,10 +257,11 @@ describe('SoundTab mic details', () => {
     const h = card('Host');
     fireEvent.change(h.getByLabelText('Monitoring'), { target: { value: 'monitor' } });
     const gate = within(h.getByRole('group', { name: 'Noise gate' }));
+    fireEvent.click(gate.getByRole('button', { name: 'Settings' }));
     fireEvent.click(gate.getByRole('switch'));
-    fireEvent.change(within(h.getByRole('group', { name: 'Noise suppression' })).getByLabelText('Method'), {
-      target: { value: 'speex' },
-    });
+    const denoise = within(h.getByRole('group', { name: 'Noise removal' }));
+    fireEvent.click(denoise.getByRole('button', { name: 'Settings' }));
+    fireEvent.change(denoise.getByLabelText('Method'), { target: { value: 'speex' } });
     expect(a.onSet.mock.calls).toEqual([
       [{ id: 'host', monitor: 'monitor' }],
       [{ id: 'host', filters: { gate: { enabled: true } } }],
@@ -243,7 +273,9 @@ describe('SoundTab mic details', () => {
   it('throttles filter sliders', () => {
     vi.useFakeTimers();
     const { a, card } = renderPanel();
-    const ratio = within(card('Host').getByRole('group', { name: 'Compressor' })).getByLabelText('Ratio');
+    const compressor = within(card('Host').getByRole('group', { name: 'Compressor' }));
+    fireEvent.click(compressor.getByRole('button', { name: 'Settings' }));
+    const ratio = compressor.getByLabelText('Ratio');
     fireEvent.change(ratio, { target: { value: '6' } });
     fireEvent.change(ratio, { target: { value: '8' } });
     act(() => vi.advanceTimersByTime(RANGE_SEND_MS));
@@ -256,7 +288,7 @@ describe('SoundTab mic details', () => {
     const failed = { ...lost, id: 'x', name: 'X', status: 'ok' as const, detail: undefined, soundcheck: { state: 'failed' as const, detail: 'Heard no speech' } };
     const { a, card } = renderPanel(state([listening, done, failed]));
     fireEvent.click(card('Host').getByRole('button', { name: 'Cancel sound check' }));
-    fireEvent.click(card('Guest').getByRole('button', { name: 'Sound check' }));
+    fireEvent.click(card('Guest').getByRole('button', { name: 'Start sound check' }));
     expect(a.onSoundcheck.mock.calls).toEqual([
       ['host', 'cancel'],
       ['guest', 'start'],
@@ -268,27 +300,36 @@ describe('SoundTab mic details', () => {
     // Dynamics are bypassed while listening, so their switches are locked.
     const hostCard = card('Host');
     expect((within(hostCard.getByRole('group', { name: 'Limiter' })).getByRole('switch') as HTMLInputElement).disabled).toBe(true);
-    expect((within(hostCard.getByRole('group', { name: 'EQ' })).getByRole('switch') as HTMLInputElement).disabled).toBe(false);
+    expect((within(hostCard.getByRole('group', { name: 'Voice EQ' })).getByRole('switch') as HTMLInputElement).disabled).toBe(false);
   });
 
-  it('adds a mic from a device or an existing input', () => {
+  it('adds a mic from a device or an existing input, in a sheet that opens and closes', () => {
     const { a } = renderPanel(state([]));
     expect(screen.getByText(/No mics yet/)).toBeTruthy();
+    // The add form starts hidden behind the dashed card.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add a mic' }));
+    expect(screen.getByRole('dialog', { name: 'Add a mic' })).toBeTruthy();
     const add = screen.getByRole('button', { name: 'Add mic' }) as HTMLButtonElement;
     expect(add.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Name (who uses it)'), { target: { value: 'Guest 2' } });
     fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'device:usb-1' } });
     fireEvent.change(screen.getByLabelText('Side'), { target: { value: 'left' } });
     fireEvent.click(add);
+    // Adding closes the sheet; the new card appears.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add a mic' }));
     fireEvent.change(screen.getByLabelText('Name (who uses it)'), { target: { value: 'Desk' } });
     fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'input:Desk mic' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add mic' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add mics to all scenes' }));
     expect(a.onAdd.mock.calls).toEqual([
       [{ name: 'Guest 2', channel: 'left', from: { kind: 'device', device: 'usb-1' } }],
       [{ name: 'Desk', channel: 'both', from: { kind: 'input', input: 'Desk mic' } }],
     ]);
-    expect(a.onNest).toHaveBeenCalled();
+    // Escape closes the sheet too.
+    fireEvent.click(screen.getByRole('button', { name: '+ Add a mic' }));
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('waits for the hub and does not ask for devices while disconnected', () => {

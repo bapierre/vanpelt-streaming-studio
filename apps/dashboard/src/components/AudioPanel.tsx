@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore, type CSSPropert
 import type { AudioDevices, AudioState, MicChannel, MicFilterKey, MicFilters, MicPatch, MicState, Monitor } from '@streamhub/shared';
 import { FADER_MAX_DB, FADER_MIN_DB, formatDb, meterPercent, meterZone, micWarning, SPLIT_HINT, trackLabel } from '../audio';
 import type { Level, LevelsStore } from '../levels';
+import { Icon } from './Icon';
 import { ThrottledRange } from './ThrottledRange';
 
 export type MicAddRequest = {
@@ -112,7 +113,7 @@ const FIELDS: Record<MicFilterKey, { title: string; help: string; fields: Field[
     fields: [{ key: 'db', label: 'Gain', min: -30, max: 30, step: 0.5, unit: 'dB' }],
   },
   denoise: {
-    title: 'Noise suppression',
+    title: 'Noise removal',
     help: 'Removes fans, hum and room noise. RNNoise sounds better; Speex uses less CPU.',
     fields: [{ key: 'suppressDb', label: 'Strength (Speex)', min: -60, max: 0, step: 1, unit: 'dB' }],
   },
@@ -128,7 +129,7 @@ const FIELDS: Record<MicFilterKey, { title: string; help: string; fields: Field[
     ],
   },
   eq: {
-    title: 'EQ',
+    title: 'Voice EQ',
     help: 'Cut Low for boomy mics held close, add a little High for clarity.',
     fields: [
       { key: 'low', label: 'Low', min: -20, max: 20, step: 0.5, unit: 'dB' },
@@ -157,7 +158,14 @@ const FIELDS: Record<MicFilterKey, { title: string; help: string; fields: Field[
   },
 };
 const FILTER_KEYS = Object.keys(FIELDS) as MicFilterKey[];
+/** The clean-up rows in the side panel; gain lives in the Level group instead. */
+const CLEANUP_KEYS = FILTER_KEYS.filter((k) => k !== 'gain');
 
+/**
+ * One voice filter in the side panel: a plain row with its on/off switch, and its
+ * settings behind a Settings button. Gain shows its slider inline because it is
+ * the one setting people touch by hand.
+ */
 function FilterGroup({
   mic,
   k,
@@ -170,30 +178,19 @@ function FilterGroup({
   onSet: AudioActions['onSet'];
 }) {
   const meta = FIELDS[k];
+  const [open, setOpen] = useState(false);
   const value = mic.filters[k] as MicFilters[MicFilterKey] & Record<string, unknown>;
   const patch = (change: Record<string, unknown>) => onSet({ id: mic.id, filters: { [k]: change } });
-  const toggleId = `${mic.id}-${k}-on`;
   const listening = mic.soundcheck?.state === 'listening';
-  return (
-    <fieldset className="camera-controls">
-      <legend>{meta.title}</legend>
-      <div className="control">
-        <label htmlFor={toggleId}>On</label>
-        <input
-          id={toggleId}
-          type="checkbox"
-          role="switch"
-          checked={value.enabled}
-          disabled={disabled || (listening && (k === 'gate' || k === 'compressor' || k === 'limiter'))}
-          onChange={(e) => patch({ enabled: e.target.checked })}
-        />
-        <span className="small muted control-help">{meta.help}</span>
-      </div>
+  const id = `${mic.id}-${k}`;
+  const params = (
+    <>
+      <p className="small muted filter-help">{meta.help}</p>
       {k === 'denoise' && (
-        <div className="control">
-          <label htmlFor={`${mic.id}-denoise-method`}>Method</label>
+        <div className="detail-line">
+          <label htmlFor={`${id}-method`}>Method</label>
           <select
-            id={`${mic.id}-denoise-method`}
+            id={`${id}-method`}
             value={mic.filters.denoise.method}
             disabled={disabled}
             onChange={(e) => patch({ method: e.target.value })}
@@ -205,12 +202,11 @@ function FilterGroup({
       )}
       {meta.fields.map((f) => {
         if (k === 'denoise' && mic.filters.denoise.method !== 'speex') return null;
-        const id = `${mic.id}-${k}-${f.key}`;
         return (
-          <div className="control" key={f.key}>
-            <label htmlFor={id}>{f.label}</label>
+          <div className="detail-line" key={f.key}>
+            <label htmlFor={`${id}-${f.key}`}>{f.label}</label>
             <ThrottledRange
-              id={id}
+              id={`${id}-${f.key}`}
               value={Number(value[f.key])}
               min={f.min}
               max={f.max}
@@ -222,7 +218,30 @@ function FilterGroup({
           </div>
         );
       })}
-    </fieldset>
+    </>
+  );
+  return (
+    <div className="filter-row" role="group" aria-label={meta.title}>
+      <span className="filter-name">{meta.title}</span>
+      <input
+        type="checkbox"
+        role="switch"
+        aria-label={meta.title}
+        checked={value.enabled}
+        disabled={disabled || (listening && (k === 'gate' || k === 'compressor' || k === 'limiter'))}
+        onChange={(e) => patch({ enabled: e.target.checked })}
+      />
+      {k === 'gain' ? (
+        <div className="filter-params">{params}</div>
+      ) : (
+        <>
+          <button className="link small" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            Settings
+          </button>
+          {open && <div className="filter-params">{params}</div>}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -236,26 +255,41 @@ export function SoundcheckView({ mic, disabled, onSoundcheck }: { mic: MicState;
         disabled={disabled || (!listening && mic.status !== 'ok')}
         onClick={() => onSoundcheck(mic.id, listening ? 'cancel' : 'start')}
       >
-        {listening ? 'Cancel sound check' : 'Sound check'}
+        {listening ? 'Cancel sound check' : 'Start sound check'}
       </button>
-      {!sc && <span className="small muted">The person talks normally for 10 seconds; the hub sets the gain.</span>}
-      {listening && <span className="small">Listening… ask {mic.name} to talk normally until the check ends.</span>}
+      {listening && <p className="small">Listening… ask {mic.name} to talk normally until the check ends.</p>}
       {sc?.state === 'done' && (
-        <span className="small">
+        <p className="small">
           Speech measured {sc.measuredDb} dBFS; gain set to {formatDb(sc.gainDb ?? 0)}.
           {sc.detail && <span className="conn-error"> {sc.detail}</span>}
-        </span>
+        </p>
       )}
-      {sc?.state === 'failed' && <span className="small conn-error">{sc.detail}</span>}
+      {sc?.state === 'failed' && <p className="small conn-error">{sc.detail}</p>}
     </div>
   );
 }
 
 const MONITOR_LABEL: Record<Monitor, string> = { off: 'Off', monitor: 'Headphones only', both: 'Headphones and stream' };
 
-/** Everything about one mic: name, level, monitoring, sync, sound check and the voice filters. */
-export function MicCard({ mic, levels, disabled, actions }: { mic: MicState; levels: LevelsStore; disabled: boolean; actions: AudioActions }) {
+/** Everything about one mic, in the right-hand side panel: sound check, level, clean up, device, remove. */
+export function MicCard({
+  mic,
+  levels,
+  disabled,
+  actions,
+  targetDb = -20,
+  onClose,
+}: {
+  mic: MicState;
+  levels: LevelsStore;
+  disabled: boolean;
+  actions: AudioActions;
+  /** Speech level the sound check aims for, dBFS. */
+  targetDb?: number;
+  onClose?: () => void;
+}) {
   const [name, setName] = useState(mic.name);
+  const [confirming, setConfirming] = useState(false);
   useEffect(() => setName(mic.name), [mic.name]);
   const off = disabled || mic.status !== 'ok';
   const warning = micWarning(mic);
@@ -264,87 +298,122 @@ export function MicCard({ mic, levels, disabled, actions }: { mic: MicState; lev
     if (n && n !== mic.name) actions.onSet({ id: mic.id, name: n });
     else setName(mic.name);
   };
+  const side = mic.channel === 'left' ? ', left side' : mic.channel === 'right' ? ', right side' : '';
   return (
-    <article className="camera-card mic-card" aria-label={mic.name}>
-      <div className="camera-head">
-        <input
-          className="mic-name"
-          aria-label="Mic name"
-          value={name}
-          maxLength={60}
-          disabled={disabled}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={rename}
-          onKeyDown={(e) => e.key === 'Enter' && rename()}
-        />
-        <span className="small muted">{trackLabel(mic)}</span>
-        <span className="spacer" />
-        <button className="link" disabled={disabled} onClick={() => actions.onRemove(mic.id)}>
-          Remove
-        </button>
+    <article className="mic-detail" aria-label={mic.name}>
+      <div className="detail-head">
+        <div className="detail-title">
+          <span className="small muted">Voice settings</span>
+          <input
+            className="mic-name"
+            aria-label="Mic name"
+            value={name}
+            maxLength={60}
+            disabled={disabled}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={rename}
+            onKeyDown={(e) => e.key === 'Enter' && rename()}
+          />
+        </div>
+        {onClose && (
+          <button className="icon-button" aria-label={`Close ${mic.name}`} onClick={onClose}>
+            <Icon name="close" />
+          </button>
+        )}
       </div>
-      <p className="small muted">
-        OBS input <strong>{mic.input}</strong>
-        {mic.channel !== 'both' && ` · ${mic.channel} side`}
-      </p>
-      {warning && <p className="conn-error small">{warning}</p>}
-      {mic.channel !== 'both' && <p className="small muted">{SPLIT_HINT}</p>}
-      <LiveMeter store={levels} id={mic.id} />
-      <div className="control">
-        <label htmlFor={`${mic.id}-fader`}>Volume</label>
-        <ThrottledRange
-          id={`${mic.id}-fader`}
-          value={mic.volumeDb}
-          min={FADER_MIN_DB}
-          max={FADER_MAX_DB}
-          step={0.5}
-          disabled={off}
-          format={(v) => (v <= FADER_MIN_DB ? '−∞' : formatDb(v))}
-          onChange={(v) => actions.onSet({ id: mic.id, volumeDb: v <= FADER_MIN_DB ? -100 : v })}
-        />
-        <MuteButton mic={mic} disabled={off} onSet={actions.onSet} />
+      {warning && <p className="small conn-error">{warning}</p>}
+      <div className="detail-check">
+        <strong>Sound check</strong>
+        <p className="small muted">
+          Speak normally for 10 seconds. streamhub sets the gain so the voice lands at {targetDb} dBFS (dBFS is how loud a
+          sound is; 0 is the loudest a recording can hold).
+        </p>
+        <LiveMeter store={levels} id={mic.id} />
+        <SoundcheckView mic={mic} disabled={disabled} onSoundcheck={actions.onSoundcheck} />
       </div>
-      <div className="control">
-        <label htmlFor={`${mic.id}-monitor`}>Monitoring</label>
-        <select
-          id={`${mic.id}-monitor`}
-          value={mic.monitor}
-          disabled={off}
-          onChange={(e) => actions.onSet({ id: mic.id, monitor: e.target.value as Monitor })}
-        >
-          {(Object.keys(MONITOR_LABEL) as Monitor[]).map((m) => (
-            <option key={m} value={m}>
-              {MONITOR_LABEL[m]}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="control">
-        <label htmlFor={`${mic.id}-sync`}>Sync offset</label>
-        <ThrottledRange
-          id={`${mic.id}-sync`}
-          value={mic.syncOffsetMs}
-          min={-950}
-          max={2000}
-          step={10}
-          disabled={off}
-          format={(v) => `${v} ms`}
-          onChange={(v) => actions.onSet({ id: mic.id, syncOffsetMs: v })}
-        />
-        <span className="small muted control-help">Delays this mic to match a camera that lags.</span>
-      </div>
-      <SoundcheckView mic={mic} disabled={disabled} onSoundcheck={actions.onSoundcheck} />
-      <details className="mic-filters">
-        <summary>Voice filters</summary>
-        {FILTER_KEYS.map((k) => (
+      <section className="detail-group" aria-label="Level">
+        <h3>Level</h3>
+        <FilterGroup mic={mic} k="gain" disabled={off} onSet={actions.onSet} />
+        <div className="detail-line">
+          <label htmlFor={`${mic.id}-sync`}>Sync offset</label>
+          <ThrottledRange
+            id={`${mic.id}-sync`}
+            value={mic.syncOffsetMs}
+            min={-950}
+            max={2000}
+            step={10}
+            disabled={off}
+            format={(v) => `${v} ms`}
+            onChange={(v) => actions.onSet({ id: mic.id, syncOffsetMs: v })}
+          />
+        </div>
+        <p className="small muted detail-help">Delays this mic to match a camera that runs late.</p>
+      </section>
+      <section className="detail-group" aria-label="Clean up">
+        <h3>Clean up</h3>
+        {CLEANUP_KEYS.map((k) => (
           <FilterGroup key={k} mic={mic} k={k} disabled={off} onSet={actions.onSet} />
         ))}
-      </details>
+      </section>
+      <section className="detail-group" aria-label="Device">
+        <h3>Device</h3>
+        <div className="detail-line">
+          <span className="detail-key">Source</span>
+          <span className="small muted">
+            <strong>{mic.input}</strong>
+            {side} · {trackLabel(mic)}
+          </span>
+        </div>
+        {mic.channel !== 'both' && <p className="small muted detail-help">{SPLIT_HINT}</p>}
+        <div className="detail-line">
+          <label htmlFor={`${mic.id}-monitor`}>Monitoring</label>
+          <select
+            id={`${mic.id}-monitor`}
+            value={mic.monitor}
+            disabled={off}
+            onChange={(e) => actions.onSet({ id: mic.id, monitor: e.target.value as Monitor })}
+          >
+            {(Object.keys(MONITOR_LABEL) as Monitor[]).map((m) => (
+              <option key={m} value={m}>
+                {MONITOR_LABEL[m]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="small muted detail-help">Hear this mic in your headphones.</p>
+      </section>
+      {confirming ? (
+        <div className="detail-confirm" role="alert">
+          <p className="small">Remove {mic.name} from the show? The OBS input stays; the mics after it move up one track.</p>
+          <div className="detail-confirm-actions">
+            <button className="danger" onClick={() => actions.onRemove(mic.id)}>
+              Remove
+            </button>
+            <button onClick={() => setConfirming(false)}>Keep</button>
+          </div>
+        </div>
+      ) : (
+        <button className="detail-remove" disabled={disabled} onClick={() => setConfirming(true)}>
+          Remove {mic.name}
+        </button>
+      )}
     </article>
   );
 }
 
-export function AddMic({ devices, disabled, actions }: { devices: AudioDevices | null; disabled: boolean; actions: AudioActions }) {
+/** The Add a mic form, shown in a sheet opened from the dashed card on the Mics page. */
+export function AddMic({
+  devices,
+  disabled,
+  actions,
+  onAdded,
+}: {
+  devices: AudioDevices | null;
+  disabled: boolean;
+  actions: AudioActions;
+  /** Closes the sheet after a mic is added. */
+  onAdded?: () => void;
+}) {
   const [name, setName] = useState('');
   const [source, setSource] = useState('');
   const [channel, setChannel] = useState<MicChannel>('both');
@@ -360,61 +429,60 @@ export function AddMic({ devices, disabled, actions }: { devices: AudioDevices |
     setName('');
     setSource('');
     setChannel('both');
+    onAdded?.();
   };
   return (
-    <section className="group">
-      <div className="group-row form">
-        <strong>Add a mic</strong>
-        <label className="field">
-          <span className="field-label">Name (who uses it)</span>
-          <input value={name} maxLength={60} disabled={disabled} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label className="field">
-          <span className="field-label">Source</span>
-          <select value={source} disabled={disabled} onChange={(e) => setSource(e.target.value)}>
-            <option value="">Choose…</option>
-            {devices && devices.devices.length > 0 && (
-              <optgroup label="Audio devices (creates an OBS input)">
-                {devices.devices.map((d) => (
-                  <option key={d.id} value={`device:${d.id}`}>
-                    {d.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {devices && devices.inputs.length > 0 && (
-              <optgroup label="Existing OBS inputs">
-                {devices.inputs.map((n) => (
-                  <option key={n} value={`input:${n}`}>
-                    {n}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </label>
-        <label className="field">
-          <span className="field-label">Side</span>
-          <select value={channel} disabled={disabled} onChange={(e) => setChannel(e.target.value as MicChannel)}>
-            <option value="both">Whole device</option>
-            <option value="left">Left side (input 1 / transmitter 1)</option>
-            <option value="right">Right side (input 2 / transmitter 2)</option>
-          </select>
-        </label>
-        <div className="control">
-          <button className="primary" disabled={disabled || !name.trim() || !source} onClick={add}>
-            Add mic
-          </button>
-          <button disabled={disabled} onClick={actions.onListDevices}>
-            Refresh devices
-          </button>
-          <button disabled={disabled} onClick={actions.onNest} title="Puts the streamhub mics scene into every scene">
-            Add mics to all scenes
-          </button>
-        </div>
-        {devices?.detail && <p className="small">{devices.detail}</p>}
+    <div className="add-mic-form">
+      <label className="field">
+        <span className="field-label">Name (who uses it)</span>
+        <input value={name} maxLength={60} disabled={disabled} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label className="field">
+        <span className="field-label">Source</span>
+        <select value={source} disabled={disabled} onChange={(e) => setSource(e.target.value)}>
+          <option value="">Choose…</option>
+          {devices && devices.devices.length > 0 && (
+            <optgroup label="Audio devices (creates an OBS input)">
+              {devices.devices.map((d) => (
+                <option key={d.id} value={`device:${d.id}`}>
+                  {d.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {devices && devices.inputs.length > 0 && (
+            <optgroup label="Existing OBS inputs">
+              {devices.inputs.map((n) => (
+                <option key={n} value={`input:${n}`}>
+                  {n}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Side</span>
+        <select value={channel} disabled={disabled} onChange={(e) => setChannel(e.target.value as MicChannel)}>
+          <option value="both">Whole device</option>
+          <option value="left">Left side (input 1 / transmitter 1)</option>
+          <option value="right">Right side (input 2 / transmitter 2)</option>
+        </select>
+      </label>
+      <p className="small muted">
+        Two people on one device? Add it twice, once with Left side and once with Right side; each person gets their own
+        track.
+      </p>
+      <div className="form-actions">
+        <button disabled={disabled} onClick={actions.onListDevices}>
+          Refresh devices
+        </button>
+        <button className="primary" disabled={disabled || !name.trim() || !source} onClick={add}>
+          Add mic
+        </button>
       </div>
-    </section>
+      {devices?.detail && <p className="small muted">{devices.detail}</p>}
+    </div>
   );
 }
 
@@ -422,4 +490,3 @@ export function recordingSummary(state: AudioState): string {
   const names = new Map(state.mics.filter((m) => m.track !== null).map((m) => [m.track, m.name]));
   return state.recordTracks.map((t) => (t === 1 ? 'Stream mix (track 1)' : `${names.get(t) ?? '?'} (track ${t})`)).join(', ');
 }
-

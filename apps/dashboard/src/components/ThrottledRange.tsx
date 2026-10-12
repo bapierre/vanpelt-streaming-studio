@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 /** Changes are sent at most this often while dragging, so a slider cannot flood OBS or a camera. */
 export const RANGE_SEND_MS = 120;
@@ -44,6 +44,8 @@ export function ThrottledRange({
     }, RANGE_SEND_MS);
   };
   const shown = local ?? value;
+  // How far along the track the value sits, so CSS can fill the left side of the slider.
+  const pct = max > min ? Math.min(100, Math.max(0, ((shown - min) / (max - min)) * 100)) : 0;
   return (
     <>
       <input
@@ -56,6 +58,7 @@ export function ThrottledRange({
         value={Math.min(max, Math.max(min, shown))}
         disabled={disabled}
         onChange={(e) => change(Number(e.target.value))}
+        style={{ '--range-pct': `${pct}%` } as CSSProperties}
       />
       <output htmlFor={id} className="small">
         {format(shown)}
