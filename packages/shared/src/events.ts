@@ -30,6 +30,7 @@ import {
   StreamSendPatchSchema,
 } from './headsets';
 import { ModulesListSchema } from './modules';
+import { PreviewsWatchSchema, ScenePreviewSchema } from './previews';
 import { RecordingSessionSchema } from './recording';
 
 export const PlatformSchema = z.enum(['twitch', 'youtube', 'kick', 'x']);
@@ -135,6 +136,8 @@ export const EventSchemas = {
   'obs.sources.list': z.object({ scene: z.string(), sources: z.array(ObsSourceSchema) }),
   'obs.cmd.reconnect': Empty,
   'obs.cmd.refresh': Empty,
+  'obs.cmd.previews.watch': PreviewsWatchSchema,
+  'obs.scene.preview': ScenePreviewSchema,
   'destinations.list': z.object({
     destinations: z.array(StreamDestinationSchema),
     inObs: z.string().nullable(),

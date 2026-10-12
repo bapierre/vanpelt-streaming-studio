@@ -83,6 +83,10 @@ Only the X connector publishes `platform.live` today; it has no chat.
 | `obs.sources.list` | `{ scene: string; sources: { name: string; visible: boolean }[] }` (retained; current program scene, top source first) |
 | `obs.cmd.reconnect` | `{}` (drop the OBS connection and connect again now) |
 | `obs.cmd.refresh` | `{}` (re-read scenes, sources and stream state from OBS) |
+| `obs.cmd.previews.watch` | `{}` (the preview lease: a dashboard showing scene previews sends it every ~5 s; the hub captures while leases arrive and stops ~12 s after the last one) |
+| `obs.scene.preview` | `{ scene, image: data URL, capturedAt }` (a ~320 px thumbnail of one scene; transient: never retained, never in history) |
+
+**Scene previews:** while a lease is fresh and OBS is connected, the hub asks OBS for `GetSourceScreenshot` of the program scene about once per second and of the other scenes round-robin about every 4 s, never with more than one request in flight, and publishes each answer as `obs.scene.preview`. The image format comes from `GetVersion`'s `supportedImageFormats` (jpg preferred, else png). A failing or disconnected OBS only skips captures; failures log once per streak. Rendering non-program scenes costs GPU in OBS; that cost is unverified on real hardware.
 
 ## Stream destinations
 RTMP targets the streamer pastes once. OBS still does all streaming; the hub only stores them and can write one into OBS's main stream output.
