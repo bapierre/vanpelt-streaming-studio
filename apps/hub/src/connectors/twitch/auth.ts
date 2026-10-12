@@ -1,4 +1,4 @@
-import type { SecretsStore, TwitchSecrets, TwitchTokens } from '../../secrets/store';
+import type { SecretsStore, TwitchTokens } from '../../secrets/store';
 
 const ID_URL = 'https://id.twitch.tv/oauth2';
 const HELIX_URL = 'https://api.twitch.tv/helix';
