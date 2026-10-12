@@ -2,8 +2,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chatMessage } from '@streamhub/shared/testing';
-import { isNearBottom } from './ChatPanel';
-import { ChatPanel } from './ChatPanel';
+import type { Alert } from '@streamhub/shared';
+import { alertPhrase, ChatPanel, isNearBottom } from './ChatPanel';
 
 afterEach(cleanup);
 
@@ -116,6 +116,43 @@ describe('ChatPanel pausing', () => {
     rerender(<ChatPanel messages={ids(0, 4)} {...props} />);
     fireEvent.click(screen.getByRole('button', { name: /Jump to latest/ }));
     expect(screen.queryByRole('button', { name: /Jump to latest/ })).toBeNull();
+  });
+});
+
+describe('ChatPanel alerts', () => {
+  const alert = (over: Partial<Alert>): Alert => ({ id: 'twitch:a1', kind: 'follow', platform: 'twitch', user: { id: 'u', name: 'ana_codes' }, at: 0, ...over });
+
+  it('shows alerts between messages by time and skips ones older than the chat', () => {
+    const msgs = [
+      chatMessage({ id: 'twitch:1', text: 'one', fragments: [{ kind: 'text', text: 'one' }], sentAt: 100 }),
+      chatMessage({ id: 'twitch:2', text: 'two', fragments: [{ kind: 'text', text: 'two' }], sentAt: 300 }),
+    ];
+    const { container } = render(
+      <ChatPanel
+        messages={msgs}
+        alerts={[alert({ id: 'twitch:a1', kind: 'resub', months: 6, at: 200 }), alert({ id: 'twitch:a0', user: { id: 'o', name: 'old' }, at: 50 })]}
+        featuredId={null}
+        onFeature={noop}
+        onClearFeature={noop}
+      />,
+    );
+    const rows = [...container.querySelectorAll('ol > li')].map((li) => li.textContent);
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toContain('ana_codes subscribed for 6 months');
+    expect(screen.queryByText('old')).toBeNull();
+  });
+
+  it('words each kind plainly', () => {
+    expect(alertPhrase(alert({ kind: 'raid', count: 12 }))).toBe('raided with 12 viewers');
+    expect(alertPhrase(alert({ kind: 'giftsub', count: 1 }))).toBe('gifted a sub');
+    expect(alertPhrase(alert({ kind: 'tip', amount: 5, amountText: '$5.00' }))).toBe('tipped $5.00');
+  });
+});
+
+describe('ChatPanel empty state', () => {
+  it('says what to do when there is no chat yet', () => {
+    render(<ChatPanel messages={[]} featuredId={null} onFeature={noop} onClearFeature={noop} />);
+    expect(screen.getByText(/Connect Twitch, YouTube or Kick in Settings/)).toBeTruthy();
   });
 });
 
