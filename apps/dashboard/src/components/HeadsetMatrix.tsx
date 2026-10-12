@@ -432,7 +432,7 @@ export function HeadsetMatrix({
           </p>
         )}
       </div>
-      {state.headsets.length > 0 && (
+      {(state.headsets.length > 0 || state.sources.length > 0) && (
         <div className="group-row hp-scroll">
           <table className="hp-matrix">
             <thead>

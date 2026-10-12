@@ -123,8 +123,16 @@ describe('HeadsetMatrix', () => {
     expect(a.onRemove).toHaveBeenCalledWith('guest');
   });
 
-  it('adds a headset with a listed or typed output and lists outputs when it opens', () => {
+  it('shows the Stream column even before any headset exists', () => {
     const a = setup(state({ headsets: [] }));
+    expect(screen.getByRole('columnheader', { name: /Stream/ })).toBeTruthy();
+    // Stream cells stay live with no headset: wiring the broadcast needs no plugin and no output.
+    fireEvent.click(screen.getByRole('switch', { name: 'Host in Stream' }));
+    expect(a.onSetStream).toHaveBeenCalledWith({ source: 'mic:host', on: false });
+  });
+
+  it('adds a headset with a listed or typed output and lists outputs when it opens', () => {
+    const a = setup(state({ headsets: [], sources: [] }));
     expect(a.onListOutputs).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('table')).toBeNull();
     const add = screen.getByRole('button', { name: 'Add headset' }) as HTMLButtonElement;
