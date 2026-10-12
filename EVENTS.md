@@ -120,7 +120,7 @@ type ConnectionState = {
   userCode?: string;         // Twitch device code to type at verificationUri
   verificationUri?: string;  // Twitch activation page
   authUrl?: string;          // YouTube: Google sign-in URL to open
-  clientConfigured?: boolean;// YouTube: a BYO OAuth client is saved
+  clientConfigured?: boolean;// Twitch, YouTube, X: a BYO client or app id is saved, so sign-in can start
 };
 ```
 | type | payload |
@@ -130,6 +130,7 @@ type ConnectionState = {
 | `connections.cmd.disconnect` | `{ platform: Platform }` |
 | `connections.cmd.setYoutubeClient` | `{ clientId: string; clientSecret: string }` |
 | `connections.cmd.setXClient` | `{ clientId: string }` (X public OAuth 2.0 client; PKCE, no secret) |
+| `connections.cmd.setTwitchClient` | `{ clientId: string }` (Twitch public app, Device Code Flow, no secret; a saved id wins over `TWITCH_CLIENT_ID` in `.env`, and no restart is needed) |
 | `connections.cmd.setObs` | `{ url: string /* ws(s):// */; password?: string }` (omit `password` to keep the saved one; saved settings override `.env`) |
 
 `connections.cmd.*` events can carry secrets: the hub handles them internally and **never forwards them to WebSocket clients**. They are not kept in history.

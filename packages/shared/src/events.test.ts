@@ -69,6 +69,13 @@ describe('M2 events', () => {
     });
     expect(validatePayload('connections.cmd.setXClient', { clientId: ' ' }).ok).toBe(false);
   });
+  it('accepts a trimmed Twitch app client id and rejects an empty one', () => {
+    expect(validatePayload('connections.cmd.setTwitchClient', { clientId: ' cid ' })).toEqual({
+      ok: true,
+      payload: { clientId: 'cid' },
+    });
+    expect(validatePayload('connections.cmd.setTwitchClient', { clientId: ' ' }).ok).toBe(false);
+  });
   it('validates platform.live', () => {
     const live = { platform: 'x', ingest: 'unknown', broadcast: 'running', viewers: 12 };
     expect(validatePayload('platform.live', live).ok).toBe(true);

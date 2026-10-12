@@ -77,6 +77,7 @@ export const ConnectionStateSchema = z.object({
   userCode: z.string().optional(),
   verificationUri: z.string().optional(),
   authUrl: z.string().optional(),
+  /** Twitch, YouTube, X: a BYO client or app id is saved, so sign-in can start. */
   clientConfigured: z.boolean().optional(),
 });
 export type ConnectionState = z.infer<typeof ConnectionStateSchema>;
@@ -158,6 +159,8 @@ export const EventSchemas = {
     clientSecret: z.string().trim().min(1),
   }),
   'connections.cmd.setXClient': z.object({ clientId: z.string().trim().min(1).max(200) }),
+  /** Twitch public (Device Code Flow) app: no client secret exists. A saved id wins over `.env`. */
+  'connections.cmd.setTwitchClient': z.object({ clientId: z.string().trim().min(1).max(200) }),
   /** Omit `password` to keep the saved one (only while the URL is unchanged); an empty string means OBS has no password. */
   'connections.cmd.setObs': z.object({
     url: z.string().trim().regex(/^wss?:\/\/\S+$/, 'use a ws:// or wss:// URL').max(300),
