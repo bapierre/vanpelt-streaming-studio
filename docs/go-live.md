@@ -12,7 +12,7 @@ First time (and after changing any key), do a private test:
 3. Dashboard → Stop stream → confirm. Every target stops.
 
 Chat:
-1. Dashboard → Settings → Platforms: Twitch and YouTube show **connected**.
+1. Dashboard → Settings → Setup overview: Twitch and YouTube show **connected**.
 2. Status bar: `twitch: live` once connected; `youtube: live` once your broadcast is live (it says `offline` before that).
 3. Send a test message from each platform: both appear in the Chat panel within ~2 s, tagged Twitch / YouTube.
 4. Delete a Twitch message as moderator: it disappears from the dashboard.

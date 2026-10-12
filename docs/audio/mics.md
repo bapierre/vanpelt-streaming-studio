@@ -38,7 +38,7 @@ The mic must be unmuted for a check. One check runs at a time.
 
 Each mic card has:
 
-- **Volume** fader and **Mute**: the same controls as the OBS mixer. The sidebar has a small mixer with these for use during the show.
+- **Volume** fader and **Mute**: the same controls as the OBS mixer. The Live tab has the same fader and Mute for each mic, for use during the show.
 - **Monitoring**: hear the mic in your headphones.
 - **Sync offset**: delays a mic to match a camera that runs late.
 - **Voice filters**, in this order in OBS: Gain (set by the sound check), Noise suppression, Noise gate, EQ, Compressor, Limiter. The filters are named "streamhub …" in OBS; other filters you add yourself stay in place, before them.

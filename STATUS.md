@@ -36,9 +36,9 @@ This is the one place that tracks how far each feature got, what has not been ch
 ## Bus, OBS bridge and dashboard
 Milestones M0 and M1. Code: `apps/hub/src/{bus,ws,obs}`, `apps/dashboard`, `packages/overlay-sdk`.
 
-**Works:** one event bus mirrored over WebSocket on 127.0.0.1, topic subscriptions with retained state, chat history ring buffer, OBS scenes, sources, start and stop stream, status bar, the Live, Sound, Chat and Settings tabs, and a pre-flight checklist in the toolbar.
+**Works:** one event bus mirrored over WebSocket on 127.0.0.1, topic subscriptions with retained state, chat history ring buffer, OBS scenes, sources, start and stop stream, the Live, Sound, On screen and Settings tabs, a pre-flight checklist and an offline banner under the toolbar, live scene previews, a pop-out chat window (⌘⇧C), and a System, Light or Dark appearance. The Twitch Client ID can be pasted in Settings → Twitch; it wins over `.env` and needs no restart.
 
-**Not verified:** the M1 done criterion, "one click goes live on all configured platforms", has not been run with a real OBS. All OBS tests use a mocked `obs-websocket-js`.
+**Not verified:** the M1 done criterion, "one click goes live on all configured platforms", has not been run with a real OBS. All OBS tests use a mocked `obs-websocket-js`. Also unverified: the GPU cost of scene previews in a real OBS; the desktop (Tauri) chat window and Keep on top in a packaged build; Twitch sign-in with a Client ID pasted in the dashboard. The Live tab stats (follows, subs, tips) count only the last 50 alerts the hub keeps, so a busy stream undercounts them.
 
 **How to take it further:** run `docs/go-live.md` with private test streams on every platform. Record the OBS version and anything that failed in this section.
 
@@ -118,7 +118,7 @@ Code: `apps/hub/src/modules`, `packages/shared/src/modules.ts`. Contract: `EVENT
 ## Alerts and goals
 Code: `apps/hub/src/alerts`, `modules/alerts`, `apps/dashboard/src/components/{AlertsPanel,GoalsPanel}.tsx`. Docs: `docs/alerts.md` (user guide), `docs/connectors/alerts.md` (sources and mapping).
 
-**Works (simulated only):** Twitch follows, subs, resubs, gift subs, cheers and raids; YouTube Super Chats, Super Stickers and memberships; a one-at-a-time pop-up with synthesized sounds; goal bars for followers, subs or tips, per stream or channel total; Settings → Alerts and Goals. An end-to-end run against a local EventSub simulator and a scripted YouTube stream passed, but no real platform event has gone through it.
+**Works (simulated only):** Twitch follows, subs, resubs, gift subs, cheers and raids; YouTube Super Chats, Super Stickers and memberships; a one-at-a-time pop-up with synthesized sounds; goal bars for followers, subs or tips, per stream or channel total; On screen → Alerts and Goals. An end-to-end run against a local EventSub simulator and a scripted YouTube stream passed, but no real platform event has gone through it.
 
 **Known limits:**
 - Twitch accounts connected before alerts existed must reconnect to grant the new scopes.

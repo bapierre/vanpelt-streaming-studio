@@ -18,7 +18,7 @@ In the Multiple output dock → **Add new target**, for each:
 | Kick | Kick dashboard → Settings → Stream URL & Key |
 | X | studio.x.com → Producer → Sources → Create source (RTMP, your region) → URL + key. Then Broadcasts → Create broadcast using that source. |
 
-To keep keys off a shared screen, paste each server and key once into the dashboard under Settings → **Stream keys**. The fields stay masked until you click the eye button, and the copy button puts the key on the clipboard for the target above. **Use in OBS** writes a destination into OBS's main stream output (refused while live). The keys are stored only in `.streamhub/secrets.json`.
+To keep keys off a shared screen, paste each server and key once into the dashboard under **Stream key** on each platform page in Settings (or **Other destinations**). The fields stay masked until you click the eye button, and the copy button puts the key on the clipboard for the target above. **Use in OBS** writes a destination into OBS's main stream output (refused while live). The keys are stored only in `.streamhub/secrets.json`.
 
 In each target's settings, tick **Sync start with OBS** and **Sync stop with OBS**.
 

@@ -18,13 +18,13 @@ Alerts play one at a time, so a gift of 50 subs or a busy raid never stacks card
 
 ## 1. Let Twitch share follows and subs
 
-Twitch needs two permissions that chat alone did not: followers and subscriptions. If you connected Twitch before alerts existed, go to **Settings → Platforms → Twitch** and press **Connect** again, then approve. Until you do, chat and the other alerts keep working, and Settings → Alerts says "Reconnect Twitch to turn on follower alerts."
+Twitch needs two permissions that chat alone did not: followers and subscriptions. If you connected Twitch before alerts existed, go to **Settings → Twitch** and press **Connect** again, then approve. Until you do, chat and the other alerts keep working, and On screen → Alerts says "Reconnect Twitch to turn on follower alerts."
 
 YouTube needs nothing new.
 
 ## 2. Add the pop-up to OBS
 
-1. Open **Settings → Alerts**. Copy the **Alert pop-up** URL (it looks like `http://127.0.0.1:4748/m/alerts/popup.html` — module pages live on their own port).
+1. Open **On screen → Alerts**. Copy the **Alert pop-up** URL (it looks like `http://127.0.0.1:4748/m/alerts/popup.html` — module pages live on their own port).
 2. In OBS, add a **Browser** source to every scene that should show alerts (or to a scene you nest into the others). Paste the URL, set width 1920 and height 1080, and leave the custom CSS empty. The page is transparent; the card appears near the top.
 3. In the Browser source properties, tick **Control audio via OBS** so the alert sounds go through the OBS mixer and into the stream and recording.
 4. Press **Test** next to any alert type. The card should appear in OBS.
@@ -44,7 +44,7 @@ Each alert type has a switch (on or off), a **Test** button, and **Text, sound a
 
 ## 4. Add goals
 
-Open **Settings → Goals** and fill in **New goal**:
+Open **On screen → Goals** and fill in **New goal**:
 
 - **Name:** what the bar says, e.g. "Road to 100 followers".
 - **Counts:** followers, subs or tips, and from when:
@@ -57,7 +57,7 @@ Each goal gets its own URL. Add one Browser source per goal bar in OBS (1920 × 
 
 ## Troubleshooting
 
-- **Test works but real alerts do not:** check that Twitch or YouTube shows **connected** in Settings → Platforms. YouTube alerts only arrive while you have a live broadcast with chat.
+- **Test works but real alerts do not:** check that Twitch or YouTube shows **connected** on its page in Settings. YouTube alerts only arrive while you have a live broadcast with chat.
 - **No follow alerts from Twitch:** reconnect Twitch (step 1).
 - **The total goal says "No follower count from Twitch yet":** totals refresh every few minutes; wait, or check the Twitch connection.
 - **No sound:** tick **Control audio via OBS** in the Browser source, and check the source is not muted in the OBS mixer.

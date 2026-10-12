@@ -10,7 +10,7 @@ YouTube's API policy forbids open-source apps from shipping API credentials, and
 5. **Clients → Create client** → Application type **Desktop app** → Create. Copy the **Client ID** and **Client secret**.
 
 ## Connect
-Dashboard → **Settings** (the Settings tab, or ⌘,) → **Platforms** → YouTube → paste the Client ID and Client secret → **Save client** → **Connect** → **Continue to Google sign-in**.
+Dashboard → **Settings** (the Settings tab, or ⌘,) → **YouTube** → paste the Client ID and Client secret → **Save client** → **Connect** → **Continue to Google sign-in**.
 - Google warns that the app isn't verified. It's your own app: choose **Continue**.
 - Grant "View your YouTube account" (read-only).
 - The tab says "YouTube is connected", and the row shows your channel name.

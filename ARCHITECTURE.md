@@ -89,12 +89,13 @@ Step types: `do` (publish an event), `wait` (ms), `waitFor` (event type, optiona
 
 ### 6. Dashboard (`apps/dashboard`)
 Served by the hub at `http://127.0.0.1:4747/`. The Tauri desktop shell (`apps/desktop`) loads the same dashboard from its own bundled hub, with no changes to the event or WebSocket contracts. See `docs/desktop.md` for lifecycle, packaging, and configuration.
-- **Tabs:** Live (scenes, sources, mixer, compact chat), Sound (mic setup, sound check, headset mixes), Chat (full-size, searchable) and Settings (side menu: General, OBS, Platforms, Alerts, Goals, Cameras, Stream keys). ⌘1–4 switch tabs and ⌘, opens Settings. Record, Start stream and the status bar stay visible on every tab. The tab to open on and the chat text size are saved in the browser (`localStorage`), not the hub; Settings is never reopened on its own, so a shared screen does not show it.
+- **Tabs:** Live (scene tiles with live previews, sources, cameras, mics, stats strip, compact chat), Sound (mic cards, voice settings side panel, Who hears what), On screen (Alerts, Goals) and Settings (side menu: Setup overview; OBS, Twitch, YouTube, Kick, X, Other destinations; Cameras, Mics and headsets; Preferences). Each platform page holds its sign-in and its stream key. ⌘1–4 switch tabs, ⌘, opens Settings, digits 1–9 cut to a scene on the Live tab. Record, Go live and the pre-flight button stay in the toolbar on every tab; a banner under it says when the hub or OBS is offline.
+- **Chat window:** Pop out (or ⌘⇧C) opens chat in its own window (`?view=chat`), larger text, featured message on top. The Live tab hands it the space while it is open (BroadcastChannel). In the desktop app the window can stay on top of OBS.
+- **Scene previews:** the Live tab holds a lease (`obs.cmd.previews.watch`, renewed while visible); the hub sends `obs.scene.preview` thumbnails from OBS `GetSourceScreenshot`, the program scene every second and the others every 4 s at 320x180, and stops when the lease lapses. A switch turns previews off to save GPU.
+- **Preferences** (start tab, chat text size, Appearance: system, light or dark) are saved in the browser (`localStorage`), not the hub. Appearance is a `data-theme` attribute on `<html>`, set before first paint. Settings is never reopened on its own, so a shared screen does not show it.
 - **Pre-flight:** a toolbar button sums up checks the dashboard works out from retained state (`apps/dashboard/src/preflight.ts`; no events of its own): OBS, a stream key in OBS, platform sign-ins, mics, headsets, disk space, camera files, cameras, paused alerts. Each problem links to where it is fixed. Problems never block Start stream; its confirm then reads "GO LIVE anyway".
 - **Unified chat:** one column, platform color tag + icon, author, text with emotes; filters by platform; click a message → "Feature" (publishes `show.feature.set`).
-- **Scenes:** buttons for every OBS scene, current scene highlighted.
 - **Sequences** (with the sequencer, not built yet): buttons for each sequence, running state, cancel.
-- **Status bar:** per-connector status, OBS connection, stream state, uptime.
 - Script/teleprompter view is **not** in the base (planned module).
 
 ### 7. Modules (`modules/*`)
@@ -164,7 +165,7 @@ Free, self-owned alerts: events come straight from the platforms, never from Str
 - **Alert service:** drops repeats by alert id (and repeat follows by the same user), keeps the last 50, and plays one alert at a time with a 1 s gap. Pause holds the queue (up to 100); skip ends the current one; tests and replays play even when their kind is off. Per-kind text, sound, volume, duration and minimum, plus the goals and their counts, are saved to `.streamhub/alerts.json` (debounced, atomic).
 - **Goals:** followers, subs or tips, per stream or channel total, over chosen platforms. Stream counts restart on go-live unless the stream was down less than 15 minutes (a crash or a restart).
 - **Overlays:** `modules/alerts` builds `popup.html` (one card per alert, synthesized sounds, so no audio files) and `goal.html?goal=<id>` (one bar per goal). The pages render alert text as text only.
-- **Dashboard:** Settings → Alerts (pop-up URL, pause and skip, per-kind settings with Test, recent alerts with Replay) and Settings → Goals.
+- **Dashboard:** On screen → Alerts (pop-up URL, pause and skip, per-kind settings with Test, recent alerts with Replay) and On screen → Goals.
 - Tested with simulated EventSub frames and YouTube responses only. Guide: `docs/alerts.md`.
 
 ## Config & secrets

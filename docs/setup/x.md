@@ -17,7 +17,7 @@ X API access is tied to a developer app and billed per use, so you create your o
 5. **Request Livestream API access** for this app with X's [Livestream API Access Form](https://docs.x.com/forms/livestream-api-access). X's docs say the whole Livestream API, broadcasts included, is limited to whitelisted apps and reviewed by X. You can connect before X approves the app; the X row then shows the "Livestream API access" error until approval comes through.
 
 ## Connect
-Dashboard → **Settings** (the Settings tab, or ⌘,) → **Platforms** → X → paste the Client ID → **Save client** → **Connect** → **Continue to X sign-in**.
+Dashboard → **Settings** (the Settings tab, or ⌘,) → **X** → paste the Client ID → **Save client** → **Connect** → **Continue to X sign-in**.
 - Approve streamhub's request to read your account, posts and broadcasts (`broadcast.read tweet.read users.read offline.access`).
 - The tab says "X is connected", and the row shows `@yourname`.
 - Finish the sign-in within about 10 minutes of pressing Connect. If X says the link expired, press **Connect** again.

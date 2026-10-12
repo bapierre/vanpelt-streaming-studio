@@ -8,7 +8,7 @@ streamhub is a free tool hosted by [Vanpelt Studio](https://vanpelt.studio).
 1. Node 20+ and pnpm (`corepack enable`).
 2. `pnpm install`
 3. `cp .env.example .env` and fill `OBS_WS_PASSWORD` (OBS → Tools → WebSocket Server Settings → Enable, Show Connect Info), or enter it later in the dashboard under Settings → OBS.
-4. Connect chat: `docs/setup/twitch.md` and `docs/setup/youtube.md` (then Settings → Platforms; the Settings tab or ⌘, opens it).
+4. Connect chat: `docs/setup/twitch.md` and `docs/setup/youtube.md` (then the Twitch and YouTube pages in Settings; the Settings tab or ⌘, opens it).
 5. Multistreaming: follow `docs/multistream.md`.
 
 ## Run
