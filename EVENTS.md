@@ -220,9 +220,21 @@ type AudioState = {
 | `audio.cmd.nest` | `{ scene? }` add the `streamhub mics` scene to `scene`, or to every scene |
 
 ## Headsets
-Each headset is a personal mix played to one output device, listed in `.streamhub/headsets.json`. Audio never passes through the hub: for every source sent to a headset, the hub keeps one `streamhub hp <headsetId>` filter from Exeldro's Audio Monitor plugin (`audio_monitor`) last on that source, so the headset hears it after the mic filters but before the stream fader: moving a fader never changes what a headset hears. A send's level is `db + masterDb`; the plugin can only turn a signal down, so levels top out at 0 dB. A filter is disabled while its send is off, its headset is muted, or its source is muted. Sources are the mics, then any other OBS audio input; new sources join every headset switched on at 0 dB. Removing a headset removes its filters. Setup: `docs/audio/headsets.md`.
+The Sound tab is a patch bay: every sound source (the mics, the audio of each camera, any other OBS audio) wired to every output (the stream mix, then one column per headset). Audio never passes through the hub.
+
+Each headset is a personal mix played to one output device, listed in `.streamhub/headsets.json`. For every source sent to a headset, the hub keeps one `streamhub hp <headsetId>` filter from Exeldro's Audio Monitor plugin (`audio_monitor`) last on that source, so the headset hears it after the mic filters but before the stream fader: moving a fader never changes what a headset hears. A send's level is `db + masterDb`; the plugin can only turn a signal down, so levels top out at 0 dB. A filter is disabled while its send is off, its headset is muted, or its source is muted. Sources are the mics, then camera audio, then any other OBS audio input; new sources join every headset switched on at 0 dB, except camera audio, which joins switched off. Removing a headset removes its filters.
+
+The **stream column** is the first output and needs no plugin: for a mic it flips OBS audio track 1 on the mic (unwired mics still record to their isolated track), for any other source it flips track 1 on that input and `db` is its OBS fader, followed live when someone drags it in OBS. A headset can **follow** the stream column or another headset (`mirror`): its own sends are then ignored and `sends` reports the effective mix, so you can hear exactly what the stream or a friend's headset hears. Labels rename any source for display only. Setup: `docs/audio/headsets.md`.
 ```ts
 type SourceKey = `mic:${string}` | `obs:${string}`;   // mic id, or OBS input name for other audio
+type Mirror = 'stream' | string;                       // or a headset id
+type HeadsetSource = {
+  key: SourceKey;
+  name: string;
+  kind: 'mic' | 'camera' | 'obs';  // camera: a camera's OBS source audio, named after the camera
+  detail?: string;                 // where the sound comes from (OBS input name)
+  live: boolean;                   // false while a camera is off-screen: the source is silent
+};
 type HeadsetState = {
   id: string;                  // slug: [a-z0-9-]+
   name: string;
@@ -230,6 +242,7 @@ type HeadsetState = {
   owner: string | null;        // mic id of the person wearing it
   masterDb: number;            // -60..0
   muted: boolean;
+  mirror: Mirror | null;       // set: plays the mirrored node's wiring; sends holds the effective mix
   status: 'ok' | 'no-plugin' | 'offline';
   detail?: string;             // e.g. "<device> is not plugged in"
   sends: Record<SourceKey, { on: boolean; db: number }>;   // db -60..0
@@ -238,17 +251,21 @@ type HeadsetsState = {
   plugin: boolean | null;      // Audio Monitor is installed in OBS; null until OBS has been asked
   outputs: string[];           // output devices on this computer; empty when they cannot be listed
   outputsDetail?: string;
-  sources: { key: SourceKey; name: string; kind: 'mic' | 'obs' }[];
+  sources: HeadsetSource[];    // mics first, then camera audio, then other OBS audio
+  stream: Record<SourceKey, { on: boolean; db: number }>;  // the stream column; db -100..26
+  labels: Record<SourceKey, string>;                       // display-name overrides
   headsets: HeadsetState[];    // up to 16
 };
 ```
 | type | payload |
 |---|---|
 | `headsets.state` | `HeadsetsState` (retained) |
-| `headsets.cmd.add` | `{ name, device, owner? }` every current source starts switched on at 0 dB |
-| `headsets.cmd.update` | `{ id, name?, device?, owner?, masterDb?, muted? }` |
+| `headsets.cmd.add` | `{ name, device, owner? }` every current source starts switched on at 0 dB, camera audio off |
+| `headsets.cmd.update` | `{ id, name?, device?, owner?, masterDb?, muted?, mirror? }` mirror: `'stream'`, a headset id, or null |
 | `headsets.cmd.remove` | `{ id }` also removes its filters from OBS |
-| `headsets.cmd.setSend` | `{ id, source, on?, db? }` |
+| `headsets.cmd.setSend` | `{ id, source, on?, db? }` refused while the headset follows another node |
+| `headsets.cmd.setStream` | `{ source, on?, db? }` wire a source into the stream mix (track 1 + fader); mics take `audio.cmd.set` |
+| `headsets.cmd.renameSource` | `{ source, name }` display label for any source; null clears it |
 | `headsets.cmd.listOutputs` | `{}` refresh `outputs` |
 
 ## Recording
