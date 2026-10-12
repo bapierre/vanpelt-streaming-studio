@@ -101,7 +101,7 @@ describe('RecordingPanel', () => {
         })}
       />,
     );
-    const text = screen.getByRole('heading', { name: 'Recording' }).parentElement!.textContent;
+    const text = screen.getByRole('region', { name: 'Recording' }).textContent;
     expect(text).toContain('file: plugin missing');
     expect(text).toContain('Source Record');
     expect(text).toContain('card: ready');
@@ -117,6 +117,15 @@ describe('RecordingPanel', () => {
       />,
     );
     expect(screen.getByRole('alert').textContent).toBe('Disk space low: 12 GB free (about 1 h 35 min left)');
+  });
+
+  it('shows the take time while recording, and no pill when stopped', () => {
+    const { rerender } = render(
+      <RecordingPanel recording={session({ output: 'recording', startedAt: Date.now() })} />,
+    );
+    expect(screen.getByText(/REC 0:00:0\d/)).toBeTruthy();
+    rerender(<RecordingPanel recording={session()} />);
+    expect(screen.queryByText(/REC /)).toBeNull();
   });
 });
 

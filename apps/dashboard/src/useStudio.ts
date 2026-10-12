@@ -12,6 +12,7 @@ import { useAudio } from './useAudio';
 import { useCameras } from './useCameras';
 import { useDashboardState } from './useDashboardState';
 import { useHeadsets } from './useHeadsets';
+import { createPreviewsStore, type PreviewsStore } from './usePreviews';
 import { useRecording } from './useRecording';
 
 /** Everything the hub tells the dashboard, plus the commands back. Each tab takes what it needs. */
@@ -24,6 +25,8 @@ export function useStudio(client: HubClient) {
   const audio = useAudio(client);
   // Meter levels live outside React state so their 15 Hz tick only re-renders meters.
   const levels = useMemo(() => createLevelsStore(client), [client]);
+  // Scene previews live outside React state for the same reason: the program image changes ~1 Hz.
+  const previews = useMemo<PreviewsStore>(() => createPreviewsStore(client), [client]);
 
   const audioActions = useMemo<AudioActions>(
     () => ({
@@ -86,6 +89,7 @@ export function useStudio(client: HubClient) {
     alerts,
     audio,
     levels,
+    previews,
     audioActions,
     headsetActions,
     alertActions,

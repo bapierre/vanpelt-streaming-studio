@@ -1,4 +1,5 @@
 import type { EventPayload } from '@streamhub/shared';
+import { Panel } from './ui';
 
 type Props = {
   sources: EventPayload<'obs.sources.list'> | null;
@@ -6,15 +7,15 @@ type Props = {
   onToggle: (scene: string, source: string, visible: boolean) => void;
 };
 
+/** The sources of the current scene with show/hide switches. */
 export function SourcesPanel({ sources, disabled, onToggle }: Props) {
   return (
-    <section className="side-section">
-      <h2>Sources{sources && <span className="side-sub"> in {sources.scene}</span>}</h2>
-      {(!sources || sources.sources.length === 0) && <p className="side-empty">No sources in this scene.</p>}
-      <ul className="source-list">
+    <Panel title={sources ? `In ${sources.scene}` : 'Sources'} sub={sources ? 'Show or hide' : undefined}>
+      {(!sources || sources.sources.length === 0) && <p className="panel-empty">No sources in this scene.</p>}
+      <ul className="src-rows">
         {sources?.sources.map((s) => (
-          <li key={s.name} className={s.visible ? 'source' : 'source hidden'}>
-            <span className="source-name">{s.name}</span>
+          <li key={s.name} className={s.visible ? 'src' : 'src off'}>
+            <span className="src-name">{s.name}</span>
             <button
               role="switch"
               className="switch"
@@ -26,6 +27,6 @@ export function SourcesPanel({ sources, disabled, onToggle }: Props) {
           </li>
         ))}
       </ul>
-    </section>
+    </Panel>
   );
 }

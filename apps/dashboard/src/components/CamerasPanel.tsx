@@ -1,6 +1,7 @@
 import type { CameraControl, CameraState, ControlValue } from '@streamhub/shared';
 import { canTake, isObsControl, STATUS_LABEL } from '../cameras';
 import { ThrottledRange } from './ThrottledRange';
+import { Panel } from './ui';
 
 export { RANGE_SEND_MS } from './ThrottledRange';
 
@@ -9,29 +10,30 @@ type Actions = {
   onSet: (id: string, key: string, value: ControlValue) => void;
 };
 
+/** Live-tab camera cuts: one row per camera, take with a click. */
 export function CameraSwitcher({ cameras, disabled, onTake }: { cameras: CameraState[]; disabled: boolean } & Pick<Actions, 'onTake'>) {
   if (cameras.length === 0) return null;
   return (
-    <section className="side-section" aria-label="Cameras">
-      <h2>Cameras</h2>
-      <div className="scene-list">
+    <Panel title="Cameras" sub="Click to take">
+      <div className="cam-rows">
         {cameras.map((cam) => (
           <button
             key={cam.id}
-            className={cam.onAir ? 'scene active' : 'scene'}
+            className={cam.onAir ? 'cam-row on-air' : 'cam-row'}
             aria-pressed={cam.onAir}
             disabled={disabled || !canTake(cam)}
             title={cam.obsDetail ?? cam.detail ?? STATUS_LABEL[cam.status]}
             onClick={() => onTake(cam.id)}
           >
-            <span className={`dot cam-${cam.status}`} />
-            <span className="scene-name">{cam.name}</span>
+            <span className={`dot cam-${cam.status}`} aria-hidden />
+            <span className="cam-row-name">{cam.name}</span>
             {cam.telemetry?.overheating && <span className="cam-warn">hot</span>}
-            {cam.onAir && <span className="program-badge">On air</span>}
+            <span className="spacer" />
+            {cam.onAir ? <span className="pill live">On air</span> : <span className="cam-take">Take</span>}
           </button>
         ))}
       </div>
-    </section>
+    </Panel>
   );
 }
 
